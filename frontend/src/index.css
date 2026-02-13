@@ -40,6 +40,7 @@
 
 /* Reset */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
 
 body {
   background: var(--bg-primary);
@@ -104,6 +105,7 @@ button {
 .btn-primary:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 30px rgba(212, 160, 55, 0.35);
+  filter: brightness(1.1);
 }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
@@ -115,9 +117,11 @@ button {
   border-radius: var(--radius-sm);
   font-weight: 600;
   font-size: 14px;
+  transition: all 0.25s ease;
 }
 .btn-secondary:hover {
-  background: var(--accent-dim);
+  background: var(--accent);
+  color: var(--bg-primary);
   border-color: var(--accent);
 }
 

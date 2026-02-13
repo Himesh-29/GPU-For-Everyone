@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
@@ -10,9 +10,31 @@ import './pages/Auth.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+/* ===== Scroll-to-section helper ===== */
+const scrollToSection = (id: string) => {
+  const el = document.getElementById(id);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+};
+
 /* ===== Navigation ===== */
 const Navigation = ({ toggleMenu, isMenuOpen }: any) => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleHashClick = (e: React.MouseEvent, sectionId: string) => {
+    e.preventDefault();
+    toggleMenu();
+    if (location.pathname !== '/') {
+      // Navigate home first, then scroll after render
+      navigate('/');
+      setTimeout(() => scrollToSection(sectionId), 100);
+    } else {
+      scrollToSection(sectionId);
+    }
+  };
 
   return (
     <nav className="navbar">
@@ -26,10 +48,10 @@ const Navigation = ({ toggleMenu, isMenuOpen }: any) => {
         </button>
 
         <div className={`nav-links ${isMenuOpen ? 'active' : ''}`}>
-          <Link to="/#marketplace" onClick={toggleMenu}>Marketplace</Link>
-          <Link to="/#features" onClick={toggleMenu}>Features</Link>
-          <Link to="/#how-it-works" onClick={toggleMenu}>How It Works</Link>
-          <Link to="/#integrate" onClick={toggleMenu}>Integrate</Link>
+          <a href="#marketplace" onClick={(e) => handleHashClick(e, 'marketplace')}>Marketplace</a>
+          <a href="#features" onClick={(e) => handleHashClick(e, 'features')}>Features</a>
+          <a href="#how-it-works" onClick={(e) => handleHashClick(e, 'how-it-works')}>How It Works</a>
+          <a href="#integrate" onClick={(e) => handleHashClick(e, 'integrate')}>Integrate</a>
           <div className="nav-actions">
             {user ? (
               <>
@@ -127,7 +149,7 @@ const IntegrateSection = () => (
         <div className="badge-gold">For Providers</div>
         <h2 className="section-title">Start <span className="text-gold">Earning</span> in Minutes</h2>
         <p className="section-desc">
-          Share your GPU power with the network. No Python required — just run one command.
+          Share your GPU power with the network. No Python required — just run our standalone agent.
         </p>
       </div>
 
@@ -144,7 +166,7 @@ const IntegrateSection = () => (
             <div>
               <h3 style={{ fontSize: '1rem', marginBottom: '8px' }}>Install Ollama</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '12px' }}>
-                One-line install. Ollama handles model management automatically.
+                One-line install for model management.
               </p>
               <pre style={{
                 background: 'rgba(0,0,0,0.4)', padding: '14px 18px',
@@ -167,17 +189,18 @@ const IntegrateSection = () => (
               fontWeight: 700, fontSize: '14px', flexShrink: 0
             }}>2</div>
             <div>
-              <h3 style={{ fontSize: '1rem', marginBottom: '8px' }}>Pull a Model</h3>
+              <h3 style={{ fontSize: '1rem', marginBottom: '8px' }}>Download the GPU Agent</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '12px' }}>
-                Download any model you'd like to serve. Lightweight models work great.
+                Our lightweight agent (10MB) connects your machine to the network automatically.
               </p>
-              <pre style={{
-                background: 'rgba(0,0,0,0.4)', padding: '14px 18px',
-                borderRadius: '8px', fontSize: '13px', color: 'var(--accent)',
-                overflowX: 'auto', border: '1px solid var(--border)'
-              }}>
-                <code>ollama pull llama3.2{'\n'}ollama pull gemma3:270m</code>
-              </pre>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <a href="/downloads/gpu-connect.exe" download className="btn-primary btn-sm">
+                  Download for Windows (.exe)
+                </a>
+                <button className="btn-secondary btn-sm" disabled>
+                  macOS / Linux (Coming Soon)
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -192,20 +215,17 @@ const IntegrateSection = () => (
               fontWeight: 700, fontSize: '14px', flexShrink: 0
             }}>3</div>
             <div>
-              <h3 style={{ fontSize: '1rem', marginBottom: '8px' }}>Run the GPU Connect Agent</h3>
+              <h3 style={{ fontSize: '1rem', marginBottom: '8px' }}>Run & Verify</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '12px' }}>
-                One command connects your GPU to the network. No Python needed — just download and run.
+                Run the executable. It will auto-detect your Ollama models and register your node.
               </p>
               <pre style={{
                 background: 'rgba(0,0,0,0.4)', padding: '14px 18px',
                 borderRadius: '8px', fontSize: '13px', color: 'var(--accent)',
                 overflowX: 'auto', border: '1px solid var(--border)'
               }}>
-                <code>{`# Download the agent (Windows / Mac / Linux)\ncurl -fsSL https://gpu-connect.io/install | sh\n\n# Or run directly:\ngpuconnect start --server wss://gpu-connect.io`}</code>
+                <code>.\gpu-connect.exe</code>
               </pre>
-              <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '8px' }}>
-                The agent auto-detects your Ollama models and registers them with the network.
-              </p>
             </div>
           </div>
         </div>

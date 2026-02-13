@@ -17,6 +17,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 48px;
 }
 
 .logo {
@@ -40,7 +41,9 @@
   font-size: 14px;
   transition: color 0.2s;
 }
-.nav-links a:hover { color: var(--text-primary); }
+.nav-links a:hover { color: var(--accent-light); }
+.nav-links a.btn-primary:hover,
+.nav-links a.btn-secondary:hover { color: var(--bg-primary); }
 
 .nav-actions {
   display: flex;
@@ -155,7 +158,7 @@
   font-weight: 600;
   font-size: 15px;
 }
-.btn-secondary-large:hover { background: var(--accent-dim); }
+.btn-secondary-large:hover { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); }
 
 
 /* Hero Stats */
