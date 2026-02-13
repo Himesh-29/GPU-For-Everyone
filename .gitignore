@@ -57,3 +57,8 @@ Thumbs.db
 
 # Docker
 .dockerignore
+
+# PyInstaller
+agent/build/
+agent/dist/
+agent/*.spec
