@@ -1,0 +1,76 @@
+:root {
+  /* Palette */
+  --color-ivory: #FFFAF0; /* Floral White - slightly warmer/premium than #FFFFF0 */
+  --color-ivory-dark: #F5E6D3; /* Champagne tone */
+  --color-gold: #C5A059; /* Muted, expensive gold (less yellow) */
+  --color-gold-light: #E6C88B;
+  --color-gold-gradient: linear-gradient(135deg, #C5A059 0%, #E6C88B 50%, #C5A059 100%);
+  --color-charcoal: #1A1A1A;
+  --color-black: #000000;
+  --color-white: #ffffff;
+  
+  /* Typography */
+  --font-heading: 'Playfair Display', serif;
+  --font-body: 'Outfit', sans-serif; /* Modern, clear, premium */
+
+  /* Spacing */
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 32px;
+  --spacing-xl: 64px;
+
+  /* Components */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 24px;
+  --shadow-gold: 0 10px 30px -5px rgba(197, 160, 89, 0.3);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.08);
+}
+
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--color-ivory);
+  color: var(--color-charcoal);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  color: var(--color-black);
+  font-weight: 700;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  font-family: var(--font-body);
+}
+
+.btn-primary {
+  background: var(--color-gold);
+  color: var(--color-white);
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-gold);
+}
+
+.btn-primary:hover {
+  background: var(--color-gold-light);
+  transform: translateY(-2px);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-md);
+}
