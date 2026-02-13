@@ -10,7 +10,6 @@ export const Register: React.FC = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('USER');
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -20,7 +19,7 @@ export const Register: React.FC = () => {
     setError('');
     try {
       await axios.post(`${API_URL}/api/core/register/`, {
-        username, email, password, role
+        username, email, password, role: 'USER'
       });
       // Auto-login after registration
       const response = await axios.post(`${API_URL}/api/core/token/`, {
@@ -69,22 +68,7 @@ export const Register: React.FC = () => {
             required
             minLength={8}
           />
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            style={{
-              padding: '12px 16px',
-              borderRadius: 'var(--radius-sm, 8px)',
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.06)',
-              color: '#f0f0f5',
-              fontSize: '14px',
-              fontFamily: 'inherit'
-            }}
-          >
-            <option value="USER">🖥 Consumer — Rent GPU Power</option>
-            <option value="PROVIDER">⚡ Provider — Share Your GPU</option>
-          </select>
+
           <button type="submit" className="btn-primary">Create Account</button>
         </form>
         <div className="auth-footer">

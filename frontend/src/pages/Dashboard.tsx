@@ -172,6 +172,51 @@ const NodesPanel = () => {
     );
 };
 
+const LiveModels = () => {
+    const [models, setModels] = useState<any[]>([]);
+    
+    useEffect(() => {
+        const fetchModels = () => {
+            axios.get(`${API_URL}/api/computing/models/`).then(r => setModels(r.data.models || [])).catch(() => {});
+        };
+        fetchModels();
+        const interval = setInterval(fetchModels, 2000);
+        return () => clearInterval(interval);
+    }, []);
+
+    return (
+        <div className="glass-card" style={{ gridColumn: '1 / -1' }}>
+            <div className="card-header">
+                <h3>Live Models</h3>
+                <span style={{ fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)' }} />
+                    Real-time
+                </span>
+            </div>
+            {models.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+                    {models.map((m) => (
+                        <div key={m.name} style={{
+                            padding: '12px', borderRadius: '8px', 
+                            background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)'
+                        }}>
+                            <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '4px', color: 'var(--text-primary)' }}>{m.name}</div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '12px', color: 'var(--accent)' }}>{m.providers} Provider{m.providers > 1 ? 's' : ''}</span>
+                                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>$1.00/job</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="empty-state">
+                    <p>No models currently online.</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const Dashboard: React.FC = () => {
     const { user, token, logout } = useAuth();
     const [activeTab, setActiveTab] = useState('overview');
@@ -243,6 +288,7 @@ export const Dashboard: React.FC = () => {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                                     <JobHistory token={token} />
                                     <NodesPanel />
+                                    <LiveModels />
                                 </div>
                             </div>
                         )}
