@@ -10,8 +10,8 @@ import platform
 from pathlib import Path
 
 # Configuration
-SERVER_URL = os.environ.get("SERVER_URL", "ws://localhost:8000/ws/computing/")
-API_URL = os.environ.get("API_URL", "http://localhost:8000")
+SERVER_URL = os.environ.get("SERVER_URL", "wss://gpu-connect-api.onrender.com/ws/computing/")
+API_URL = os.environ.get("API_URL", "https://gpu-connect-api.onrender.com")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 NODE_ID = os.environ.get("NODE_ID", f"node-{uuid.uuid4().hex[:8]}")
 
@@ -201,7 +201,7 @@ async def agent_loop(auth_token: str):
 
 def get_dashboard_url():
     """Get the frontend dashboard URL."""
-    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+    frontend_url = os.environ.get("FRONTEND_URL", "https://gpuconnect.vercel.app")
     return f"{frontend_url}/dashboard?tab=provider"
 
 
