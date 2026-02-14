@@ -122,3 +122,107 @@ class TestDepositWebhookFlow:
         url = reverse('mock-webhook', kwargs={'transaction_id': 99999})
         resp = self.client.post(url)
         assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+class TestWithdrawalFlow:
+    """Tests for withdrawal processing."""
+
+    def setup_method(self):
+        self.user = User.objects.create_user(
+            username='withdrawer', password='p',
+            wallet_balance=Decimal('100.00')
+        )
+
+    def test_process_withdrawal_success(self):  # pylint: disable=missing-function-docstring
+        txn = Transaction.objects.create(
+            user=self.user, amount=Decimal('30.00'),
+            type='WITHDRAWAL', status='PENDING'
+        )
+        result = CreditService.process_transaction(txn.id)
+        assert result is True
+        self.user.refresh_from_db()
+        assert self.user.wallet_balance == Decimal('70.00')
+        txn.refresh_from_db()
+        assert txn.status == 'SUCCESS'
+
+    def test_process_withdrawal_creates_log(self):  # pylint: disable=missing-function-docstring
+        txn = Transaction.objects.create(
+            user=self.user, amount=Decimal('20.00'),
+            type='WITHDRAWAL', status='PENDING'
+        )
+        CreditService.process_transaction(txn.id)
+        log = CreditLog.objects.filter(user=self.user, amount__lt=0).first()
+        assert log is not None
+        assert log.amount == Decimal('-20.00')
+        assert 'Withdrawal' in log.description
+
+    def test_process_nonexistent_transaction(self):  # pylint: disable=missing-function-docstring
+        result = CreditService.process_transaction(99999)
+        assert result is False
+
+
+@pytest.mark.django_db
+class TestWalletBalanceView:
+    """Tests for the WalletBalanceView."""
+
+    def setup_method(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='walletuser', password='p',
+            wallet_balance=Decimal('75.00')
+        )
+
+    def test_unauthenticated_returns_401(self):  # pylint: disable=missing-function-docstring
+        url = reverse('wallet')
+        resp = self.client.get(url)
+        assert resp.status_code == 401
+
+    def test_authenticated_returns_balance(self):  # pylint: disable=missing-function-docstring
+        self.client.force_authenticate(user=self.user)
+        url = reverse('wallet')
+        resp = self.client.get(url)
+        assert resp.status_code == 200
+        assert str(resp.data['balance']) == '75.00'
+        assert 'logs' in resp.data
+
+    def test_balance_with_credit_logs(self):  # pylint: disable=missing-function-docstring
+        CreditLog.objects.create(
+            user=self.user, amount=Decimal('10.00'),
+            description='Test credit'
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse('wallet')
+        resp = self.client.get(url)
+        assert resp.status_code == 200
+        assert len(resp.data['logs']) == 1
+
+
+@pytest.mark.django_db
+class TestDepositView:
+    """Tests for the DepositView."""
+
+    def setup_method(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='depositer', password='p',
+            wallet_balance=Decimal('50.00')
+        )
+
+    def test_create_deposit(self):  # pylint: disable=missing-function-docstring
+        self.client.force_authenticate(user=self.user)
+        url = reverse('deposit')
+        resp = self.client.post(url, {
+            'amount': '25.00', 'gateway_id': 'stripe_test_123',
+            'type': 'DEPOSIT',
+        })
+        assert resp.status_code == 201
+        txn = Transaction.objects.get(user=self.user)
+        assert txn.type == 'DEPOSIT'
+        assert txn.status == 'PENDING'
+        assert txn.amount == Decimal('25.00')
+
+    def test_create_deposit_unauthenticated(self):  # pylint: disable=missing-function-docstring
+        url = reverse('deposit')
+        resp = self.client.post(url, {'amount': '25.00'})
+        assert resp.status_code == 401
