@@ -1,8 +1,6 @@
 name: Deploy to Vercel & Render
 
 on:
-  push:
-    branches: [main]
   workflow_run:
     workflows: [Test & Code Quality]
     types: [completed]
@@ -23,23 +21,27 @@ jobs:
     outputs:
       approved: ${{ steps.gate.outputs.approved }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Check workflow status
-        if: github.event_name == 'workflow_run'
+        id: gate
+        continue-on-error: true
         run: |
-          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-            echo "❌ Quality checks failed - blocking deployment"
+          if [ "${{ github.event_name }}" == "workflow_run" ]; then
+            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+              echo "approved=false" >> $GITHUB_OUTPUT
+              echo "❌ Quality checks failed - blocking deployment"
+              exit 1
+            else
+              echo "approved=true" >> $GITHUB_OUTPUT
+              echo "✅ Quality gates approved - proceeding with deployment"
+            fi
+          else
             echo "approved=false" >> $GITHUB_OUTPUT
-            exit 1
+            echo "⚠️  Only workflow_run triggers deployments"
           fi
-          echo "✅ Quality gates approved - proceeding with deployment"
-          echo "approved=true" >> $GITHUB_OUTPUT
-
-      - name: Approve for manual push
-        if: github.event_name == 'push'
-        run: echo "approved=true" >> $GITHUB_OUTPUT
+      
+      - name: Fail if not approved
+        if: steps.gate.outputs.approved != 'true'
+        run: exit 1
 
   # ─────────────────────────────────────────────
   # Deploy frontend to Vercel
@@ -55,6 +57,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Verify quality gate passed
+        run: |
+          if [ "${{ needs.check-quality-gate.outputs.approved }}" != "true" ]; then
+            echo "❌ Quality gate not approved - refusing to deploy"
+            exit 1
+          fi
+          echo "✅ Quality gate verified - proceeding with Vercel deployment"
 
       - name: Deploy to Vercel
         uses: vercel/action@main
@@ -86,6 +96,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Verify quality gate passed
+        run: |
+          if [ "${{ needs.check-quality-gate.outputs.approved }}" != "true" ]; then
+            echo "❌ Quality gate not approved - refusing to deploy"
+            exit 1
+          fi
+          echo "✅ Quality gate verified - proceeding with Render deployment"
 
       - name: Deploy to Render via webhook
         run: |
