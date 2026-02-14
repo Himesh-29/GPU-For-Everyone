@@ -1,12 +1,14 @@
+"""Core models — custom User and AgentToken for GPU provider auth."""
+import hashlib
+import secrets
+from decimal import Decimal
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
-from decimal import Decimal
-import hashlib
-import secrets
 
 class User(AbstractUser):
-    # Role choices
+    """Custom user model with role and wallet balance."""
     ROLE_CHOICES = (
         ('USER', 'User'),
         ('PROVIDER', 'GPU Provider'),
@@ -33,6 +35,7 @@ class AgentToken(models.Model):
     is_active = models.BooleanField(default=True)
 
     class Meta:
+        """Order tokens by creation date descending."""
         ordering = ['-created_at']
 
     def __str__(self):
@@ -70,10 +73,9 @@ class AgentToken(models.Model):
                 is_active=True
             )
             # Update last_used
-            from django.utils import timezone
+            from django.utils import timezone  # pylint: disable=import-outside-toplevel
             token.last_used = timezone.now()
             token.save(update_fields=['last_used'])
             return token
         except cls.DoesNotExist:
             return None
-

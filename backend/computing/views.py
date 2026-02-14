@@ -1,39 +1,51 @@
-from rest_framework import views, status
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.shortcuts import get_object_or_404
-from django.utils import timezone
-from .models import Job, Node
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
+"""Views for the computing module — job submission, listing, and stats."""
 from decimal import Decimal
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from django.shortcuts import get_object_or_404
+from rest_framework import views, status
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.response import Response
+
+from .models import Job, Node
 
 
 class JobSubmissionView(views.APIView):
+    """Submit a new GPU inference job."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        """Create a job, deduct credits, and dispatch to GPU nodes."""
         user = request.user
 
         prompt = request.data.get("prompt")
         model = request.data.get("model", "llama3.2:latest")
 
         if not prompt:
-            return Response({"error": "Prompt is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Prompt is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Ensure there are active nodes NOT owned by this user
         other_nodes = Node.objects.filter(is_active=True).exclude(owner=user)
         if not other_nodes.exists():
-            return Response({
-                "error": "No available third-party nodes. To maintain ecosystem integrity, you cannot serve your own requests."
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "No available third-party nodes. "
+                 "You cannot serve your own requests."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Check Balance (Simple PoC: 1 credit per job)
-        JOB_COST = Decimal('1.00')
-        if user.wallet_balance < JOB_COST:
-            return Response({"error": "Insufficient funds"}, status=status.HTTP_402_PAYMENT_REQUIRED)
+        job_cost = Decimal('1.00')
+        if user.wallet_balance < job_cost:
+            return Response(
+                {"error": "Insufficient funds"},
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
 
-        user.wallet_balance -= JOB_COST
+        user.wallet_balance -= job_cost
         user.save()
 
         job = Job.objects.create(
@@ -41,7 +53,7 @@ class JobSubmissionView(views.APIView):
             task_type="inference",
             input_data={"prompt": prompt, "model": model},
             status="PENDING",
-            cost=JOB_COST,
+            cost=job_cost,
         )
 
         # Dispatch to all connected GPU provider nodes
@@ -63,9 +75,11 @@ class JobSubmissionView(views.APIView):
 
 
 class JobDetailView(views.APIView):
+    """Retrieve details for a single job."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request, job_id):
+        """Return job details if the requesting user owns the job."""
         job = get_object_or_404(Job, id=job_id)
         if job.user != request.user:
             return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
@@ -87,6 +101,7 @@ class JobListView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        """Return all jobs belonging to the authenticated user."""
         jobs = Job.objects.filter(user=request.user).order_by('-created_at')
         data = [{
             "id": j.id,
@@ -108,9 +123,10 @@ class AvailableModelsView(views.APIView):
     """
     permission_classes = [AllowAny]
 
-    def get(self, request):
+    def get(self, _request):
+        """Return models available across all active nodes."""
         active_nodes = Node.objects.filter(is_active=True)
-        model_map = {}  # model_name -> { providers: int, node_ids: [] }
+        model_map = {}
 
         for node in active_nodes:
             models = node.gpu_info.get("models", [])
@@ -135,7 +151,8 @@ class NetworkStatsView(views.APIView):
     """Public endpoint for network statistics."""
     permission_classes = [AllowAny]
 
-    def get(self, request):
+    def get(self, _request):
+        """Return public network-wide statistics."""
         active_nodes = Node.objects.filter(is_active=True).count()
         total_jobs = Job.objects.count()
         completed_jobs = Job.objects.filter(status="COMPLETED").count()
@@ -157,9 +174,10 @@ class NetworkStatsView(views.APIView):
 class ProviderStatsView(views.APIView):
     """Authenticated endpoint returning comprehensive provider metrics."""
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        from .utils import get_provider_stats
+        """Return comprehensive provider metrics for the current user."""
+        from .utils import get_provider_stats  # pylint: disable=import-outside-toplevel
         days = int(request.query_params.get("days", 30))
         stats = get_provider_stats(request.user, days)
         return Response(stats)

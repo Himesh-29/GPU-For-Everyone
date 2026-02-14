@@ -2,13 +2,15 @@
 Test Suite: Payment System
 Covers: Wallet balance, deposit, credit transfer, mock webhook
 """
-import pytest
-from rest_framework.test import APIClient
-from django.urls import reverse
-from core.models import User
-from payments.models import Transaction, CreditLog
-from payments.services import CreditService
 from decimal import Decimal
+
+import pytest
+from django.urls import reverse
+from rest_framework.test import APIClient
+
+from core.models import User
+from payments.models import CreditLog, Transaction
+from payments.services import CreditService
 
 
 @pytest.mark.django_db
@@ -25,14 +27,14 @@ class TestCreditService:
             wallet_balance=Decimal('10.00')
         )
 
-    def test_transfer_credits_success(self):
+    def test_transfer_credits_success(self):  # pylint: disable=missing-function-docstring
         CreditService.transfer_credits(self.sender, self.receiver, Decimal('20.00'), job_id=1)
         self.sender.refresh_from_db()
         self.receiver.refresh_from_db()
         assert self.sender.wallet_balance == Decimal('30.00')
         assert self.receiver.wallet_balance == Decimal('30.00')
 
-    def test_transfer_creates_credit_logs(self):
+    def test_transfer_creates_credit_logs(self):  # pylint: disable=missing-function-docstring
         CreditService.transfer_credits(self.sender, self.receiver, Decimal('5.00'), job_id=42)
         logs = CreditLog.objects.all()
         assert logs.count() == 2
@@ -42,11 +44,11 @@ class TestCreditService:
         assert receiver_log.amount == Decimal('5.00')
         assert 'Job 42' in sender_log.description
 
-    def test_transfer_insufficient_funds_raises(self):
+    def test_transfer_insufficient_funds_raises(self):  # pylint: disable=missing-function-docstring
         with pytest.raises(ValueError, match="Insufficient funds"):
             CreditService.transfer_credits(self.sender, self.receiver, Decimal('999.00'))
 
-    def test_transfer_insufficient_funds_no_change(self):
+    def test_transfer_insufficient_funds_no_change(self):  # pylint: disable=missing-function-docstring
         try:
             CreditService.transfer_credits(self.sender, self.receiver, Decimal('999.00'))
         except ValueError:
@@ -68,7 +70,7 @@ class TestDepositWebhookFlow:
             wallet_balance=Decimal('10.00')
         )
 
-    def test_process_deposit_adds_to_wallet(self):
+    def test_process_deposit_adds_to_wallet(self):  # pylint: disable=missing-function-docstring
         txn = Transaction.objects.create(
             user=self.user, amount=Decimal('50.00'),
             type='DEPOSIT', status='PENDING'
@@ -78,7 +80,7 @@ class TestDepositWebhookFlow:
         self.user.refresh_from_db()
         assert self.user.wallet_balance == Decimal('60.00')
 
-    def test_process_deposit_changes_status(self):
+    def test_process_deposit_changes_status(self):  # pylint: disable=missing-function-docstring
         txn = Transaction.objects.create(
             user=self.user, amount=Decimal('25.00'),
             type='DEPOSIT', status='PENDING'
@@ -87,7 +89,7 @@ class TestDepositWebhookFlow:
         txn.refresh_from_db()
         assert txn.status == 'SUCCESS'
 
-    def test_process_already_completed(self):
+    def test_process_already_completed(self):  # pylint: disable=missing-function-docstring
         txn = Transaction.objects.create(
             user=self.user, amount=Decimal('25.00'),
             type='DEPOSIT', status='SUCCESS'
@@ -95,7 +97,7 @@ class TestDepositWebhookFlow:
         result = CreditService.process_transaction(txn.id)
         assert result is False
 
-    def test_withdrawal_insufficient_fails(self):
+    def test_withdrawal_insufficient_fails(self):  # pylint: disable=missing-function-docstring
         txn = Transaction.objects.create(
             user=self.user, amount=Decimal('999.00'),
             type='WITHDRAWAL', status='PENDING'
@@ -105,7 +107,7 @@ class TestDepositWebhookFlow:
         txn.refresh_from_db()
         assert txn.status == 'FAILED'
 
-    def test_mock_webhook_endpoint(self):
+    def test_mock_webhook_endpoint(self):  # pylint: disable=missing-function-docstring
         txn = Transaction.objects.create(
             user=self.user, amount=Decimal('10.00'),
             type='DEPOSIT', status='PENDING'
@@ -116,7 +118,7 @@ class TestDepositWebhookFlow:
         self.user.refresh_from_db()
         assert self.user.wallet_balance == Decimal('20.00')
 
-    def test_mock_webhook_nonexistent_transaction(self):
+    def test_mock_webhook_nonexistent_transaction(self):  # pylint: disable=missing-function-docstring
         url = reverse('mock-webhook', kwargs={'transaction_id': 99999})
         resp = self.client.post(url)
         assert resp.status_code == 400

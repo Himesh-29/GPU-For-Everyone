@@ -1,3 +1,4 @@
+"""URL routes for OAuth callback and completion endpoints."""
 from django.urls import path
 from .oauth_views import OAuthCallbackView, OAuthCompleteView
 

@@ -1,12 +1,16 @@
-from decimal import Decimal
+"""Utility functions for computing module statistics and metrics."""
 import datetime
-from django.utils import timezone
-from django.db.models import Sum, Count, Q
+from decimal import Decimal
+
+from django.db.models import Count, Sum
 from django.db.models.functions import TruncDate
+from django.utils import timezone
+
 from .models import Job, Node
 from payments.models import CreditLog
 
-def get_provider_stats(user, days=30):
+
+def get_provider_stats(user, days=30):  # pylint: disable=too-many-locals
     """
     Calculates comprehensive provider and consumer metrics for a user.
     Reusable by both REST views and WebSocket consumers.
@@ -57,7 +61,9 @@ def get_provider_stats(user, days=30):
     # --- Per-model breakdown ---
     model_stats = {}
     for job in jobs_served_period:
-        model = (job.input_data or {}).get("model", "unknown") if isinstance(job.input_data, dict) else "unknown"
+        model = "unknown"
+        if isinstance(job.input_data, dict):
+            model = (job.input_data or {}).get("model", "unknown")
         if model not in model_stats:
             model_stats[model] = {"model": model, "jobs": 0, "earned": 0.0}
         model_stats[model]["jobs"] += 1
@@ -75,16 +81,27 @@ def get_provider_stats(user, days=30):
 
     # --- Jobs I submitted (as consumer) ---
     my_jobs = Job.objects.filter(user=user).order_by('-created_at')
-    consumer_jobs = [{
-        "id": j.id,
-        "status": j.status,
-        "prompt": (j.input_data or {}).get("prompt", "")[:80] if isinstance(j.input_data, dict) else str(j.input_data)[:80],
-        "model": (j.input_data or {}).get("model", "") if isinstance(j.input_data, dict) else "unknown",
-        "cost": str(j.cost) if j.cost else None,
-        "result": j.result,
-        "created_at": j.created_at.isoformat(),
-        "completed_at": j.completed_at.isoformat() if j.completed_at else None,
-    } for j in my_jobs[:50]]
+    consumer_jobs = []
+    for j in my_jobs[:50]:
+        prompt = ""
+        model = "unknown"
+        if isinstance(j.input_data, dict):
+            prompt = (j.input_data or {}).get("prompt", "")[:80]
+            model = (j.input_data or {}).get("model", "")
+        else:
+            prompt = str(j.input_data)[:80]
+        consumer_jobs.append({
+            "id": j.id,
+            "status": j.status,
+            "prompt": prompt,
+            "model": model,
+            "cost": str(j.cost) if j.cost else None,
+            "result": j.result,
+            "created_at": j.created_at.isoformat(),
+            "completed_at": (
+                j.completed_at.isoformat() if j.completed_at else None
+            ),
+        })
 
     return {
         "provider": {

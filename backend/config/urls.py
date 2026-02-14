@@ -1,3 +1,4 @@
+"""Root URL configuration for the GPU Connect project."""
 from django.contrib import admin
 from django.urls import path, include
 

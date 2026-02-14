@@ -1,23 +1,28 @@
-from rest_framework import generics, permissions, views, status
-from rest_framework.response import Response
-from .serializers import RegisterSerializer, UserSerializer
-from .models import AgentToken
+"""Views for the core module — registration, profiles, and agent tokens."""
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from rest_framework import generics, permissions, views, status
+from rest_framework.response import Response
+
+from .models import AgentToken
+from .serializers import RegisterSerializer, UserSerializer
 
 User = get_user_model()
 
 class RegisterView(generics.CreateAPIView):
+    """Register a new user account."""
     queryset = User.objects.all()
     permission_classes = (permissions.AllowAny,)
     serializer_class = RegisterSerializer
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
+    """Retrieve or update the authenticated user's profile."""
     queryset = User.objects.all()
     permission_classes = (permissions.IsAuthenticated,)
     serializer_class = UserSerializer
 
     def get_object(self):
+        """Return the current authenticated user."""
         return self.request.user
 
 
@@ -26,8 +31,9 @@ class AgentTokenGenerateView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        """Generate a new agent token; returns the raw token once."""
         label = request.data.get('label', 'Default Agent')
-        
+
         # Limit to 5 active tokens per user
         active_count = AgentToken.objects.filter(user=request.user, is_active=True).count()
         if active_count >= 5:
@@ -51,6 +57,7 @@ class AgentTokenListView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        """List all active agent tokens for the current user."""
         tokens = AgentToken.objects.filter(user=request.user, is_active=True)
         data = [{
             "id": t.id,
@@ -67,6 +74,7 @@ class AgentTokenRevokeView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, token_id):
+        """Revoke an agent token by ID."""
         try:
             token = AgentToken.objects.get(id=token_id, user=request.user, is_active=True)
             token.is_active = False
@@ -83,7 +91,8 @@ class HealthCheckView(views.APIView):
     """Health check endpoint for cron jobs and monitoring. No auth required."""
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request):
+    def get(self, _request):
+        """Return service health status."""
         return Response({
             "status": "healthy",
             "service": "GPU Connect API",

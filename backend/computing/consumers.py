@@ -1,22 +1,27 @@
+"""WebSocket consumers for GPU node communication and dashboard updates."""
 import asyncio
 import json
 import logging
-from channels.generic.websocket import AsyncWebsocketConsumer
-from channels.db import database_sync_to_async
-from django.utils import timezone
 from decimal import Decimal
+
+from channels.db import database_sync_to_async
+from channels.generic.websocket import AsyncWebsocketConsumer
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
 JOB_COST = Decimal("1.00")
-PROVIDER_SHARE = Decimal("1.00")  # Provider gets 100% — fully decentralized, no platform fee
+PROVIDER_SHARE = Decimal("1.00")
 
 
 class GPUConsumer(AsyncWebsocketConsumer):
+    """Handles GPU provider node WebSocket connections and job dispatching."""
+
     async def connect(self):
+        """Accept the WebSocket and start keep-alive pings."""
         self.node_id = "unknown"
         self.provider_user_id = None
-        self.auth_token = None  # Store token for re-validation
+        self.auth_token = None
         self.group_name = "gpu_nodes"
         await self.channel_layer.group_add(
             self.group_name,
@@ -28,17 +33,9 @@ class GPUConsumer(AsyncWebsocketConsumer):
 
     async def _broadcast_dashboard_update(self):
         """Trigger a recalculation and broadcast to dashboard consumers."""
-        # We re-calculate stats and broadcast. 
-        # Ideally we'd just send the delta, but full refresh is safer for consistency.
-        # We can implement a static helper or just duplicate logic slightly or make DashboardConsumer methods static?
-        # Better: Send a "trigger" message to DashboardConsumer group telling them to refresh?
-        # NO, that causes N refreshes.
-        # Best: Calculate here and send.
-        
-        # We need to run DB queries.
         stats = await self._get_stats()
         models = await self._get_models()
-        
+
         await self.channel_layer.group_send(
             "dashboard_updates",
             {
@@ -60,10 +57,11 @@ class GPUConsumer(AsyncWebsocketConsumer):
             }
         )
 
-    # Re-use the logic from DashboardConsumer by moving it to a helper or just duplicating (it's small)
+    # Re-use the logic from DashboardConsumer
     @database_sync_to_async
     def _get_stats(self):
-        from .models import Node, Job
+        """Return network stats: active nodes, completed jobs, model count."""
+        from .models import Node, Job  # pylint: disable=import-outside-toplevel
         active_nodes = Node.objects.filter(is_active=True).count()
         completed_jobs = Job.objects.filter(status="COMPLETED").count()
         models = self._get_models_sync_shared()
@@ -75,20 +73,22 @@ class GPUConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _get_models(self):
+        """Return available models aggregated from active nodes."""
         return self._get_models_sync_shared()
-    
+
     def _get_models_sync_shared(self):
-        from .models import Node
+        """Synchronous helper: aggregate model counts from active nodes."""
+        from .models import Node  # pylint: disable=import-outside-toplevel
         nodes = Node.objects.filter(is_active=True)
         model_counts = {}
         for node in nodes:
             info = node.gpu_info or {}
-            models = info.get("models", [])
-            for m in models:
+            node_models = info.get("models", [])
+            for m in node_models:
                 if isinstance(m, dict):
                     name = m.get("name")
-                else: 
-                     name = m 
+                else:
+                    name = m
                 if name:
                     model_counts[name] = model_counts.get(name, 0) + 1
         return [{"name": k, "providers": v} for k, v in model_counts.items()]
@@ -98,12 +98,15 @@ class GPUConsumer(AsyncWebsocketConsumer):
         try:
             while True:
                 await asyncio.sleep(15)
-                
+
                 # Re-validate token if we are registered
                 if self.auth_token:
                     user_id = await self._validate_token(self.auth_token)
                     if not user_id:
-                        logger.warning(f"Token revoked for node {self.node_id}. Disconnecting.")
+                        logger.warning(
+                            "Token revoked for node %s. Disconnecting.",
+                            self.node_id,
+                        )
                         await self.send(json.dumps({
                             "type": "auth_error",
                             "error": "Token revoked or expired."
@@ -111,12 +114,15 @@ class GPUConsumer(AsyncWebsocketConsumer):
                         await self.close()
                         return
 
-                await self.send(json.dumps({"type": "ping"}, ensure_ascii=False))
-        except Exception:
+                await self.send(json.dumps(
+                    {"type": "ping"}, ensure_ascii=False,
+                ))
+        except Exception:  # pylint: disable=broad-except
             pass
 
     async def disconnect(self, close_code):
-        logger.info(f"WebSocket Disconnected: {close_code}")
+        """Clean up on WebSocket disconnect."""
+        logger.info("WebSocket Disconnected: %s", close_code)
         if hasattr(self, '_ping_task'):
             self._ping_task.cancel()
         await self.channel_layer.group_discard(
@@ -136,6 +142,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
                 )
 
     async def receive(self, text_data):
+        """Route incoming WebSocket messages by type."""
         data = json.loads(text_data)
         msg_type = data.get("type")
 
@@ -154,9 +161,11 @@ class GPUConsumer(AsyncWebsocketConsumer):
                 await self.close()
                 return
 
-            self.auth_token = auth_token  # Save for keep-alive checks
+            self.auth_token = auth_token
             self.provider_user_id = user_id
-            logger.info(f"Registering Node: {self.node_id} (user_id={user_id})")
+            logger.info(
+                "Registering Node: %s (user_id=%s)", self.node_id, user_id,
+            )
 
             username = await self._register_node(self.node_id, gpu_info, user_id)
             await self.send(json.dumps({
@@ -180,7 +189,9 @@ class GPUConsumer(AsyncWebsocketConsumer):
             response_text = result.get("response", "")
             error = result.get("error", "")
 
-            logger.info(f"Job Result Received for Task {task_id}: {status}")
+            logger.info(
+                "Job Result Received for Task %s: %s", task_id, status,
+            )
 
             if task_id:
                 if status == "success":
@@ -199,12 +210,12 @@ class GPUConsumer(AsyncWebsocketConsumer):
         """Send private updates to Job Owner and Provider."""
         # Async wrapper to gather data and send group messages
         data = await self._get_job_completion_data(job_id, provider_id)
-        if not data: return
+        if not data:
+            return
 
         owner_id = data['owner_id']
         job_data = data['job_data']
         owner_balance = data['owner_balance']
-        provider_balance = data['provider_balance']
 
         # 1. Notify Job Owner (Job status + Balance update)
         if owner_id:
@@ -213,7 +224,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
                 {
                     "type": "dashboard_update",
                     "data": {
-                        "type": "job_update", # Single job update
+                        "type": "job_update",
                         "job": job_data
                     }
                 }
@@ -243,32 +254,48 @@ class GPUConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _get_job_completion_data(self, job_id, provider_id):
-        from .models import Job
-        from core.models import User
+        """Gather job, owner, and provider data for completion notifications."""
+        from .models import Job  # pylint: disable=import-outside-toplevel
+        from core.models import User  # pylint: disable=import-outside-toplevel
         try:
             job = Job.objects.get(id=job_id)
             owner = job.user
-            
-            provider_balance = Decimal("0.00")
+
+            provider_bal = Decimal("0.00")
             if provider_id:
                 try:
-                    provider_balance = User.objects.get(id=provider_id).wallet_balance
-                except: pass
+                    provider_bal = User.objects.get(
+                        id=provider_id,
+                    ).wallet_balance
+                except Exception:  # pylint: disable=broad-except
+                    pass
 
+            input_data = job.input_data or {}
+            is_dict = isinstance(input_data, dict)
             return {
                 "owner_id": owner.id,
                 "owner_balance": owner.wallet_balance,
-                "provider_balance": provider_balance,
+                "provider_balance": provider_bal,
                 "max_retries": 1,
                 "job_data": {
-                    "id": job.id, "status": job.status, 
-                    "prompt": (job.input_data or {}).get('prompt', '') if isinstance(job.input_data, dict) else str(job.input_data),
-                    "model": (job.input_data or {}).get('model', '') if isinstance(job.input_data, dict) else "unknown", 
+                    "id": job.id,
+                    "status": job.status,
+                    "prompt": (
+                        input_data.get("prompt", "")
+                        if is_dict else str(input_data)
+                    ),
+                    "model": (
+                        input_data.get("model", "")
+                        if is_dict else "unknown"
+                    ),
                     "cost": str(job.cost) if job.cost else None,
-                    "result": job.result, 
+                    "result": job.result,
                     "created_at": str(job.created_at),
-                    "completed_at": str(job.completed_at) if job.completed_at else None
-                }
+                    "completed_at": (
+                        str(job.completed_at)
+                        if job.completed_at else None
+                    ),
+                },
             }
         except Job.DoesNotExist:
             return None
@@ -280,11 +307,13 @@ class GPUConsumer(AsyncWebsocketConsumer):
             return
 
         job_data = event["job_data"]
-        
-        # PREVENT SELF-INFRASTRUCTURE USAGE
-        # A provider should NOT be serving their own jobs.
+
+        # Prevent self-infrastructure usage
         if job_data.get("owner_id") == self.provider_user_id:
-            logger.info(f"Skipping job {job_data['task_id']} — provider is the owner.")
+            logger.info(
+                "Skipping job %s — provider is the owner.",
+                job_data["task_id"],
+            )
             return
 
         await self.send(json.dumps({
@@ -300,19 +329,20 @@ class GPUConsumer(AsyncWebsocketConsumer):
         if not token:
             return None
         try:
-            from core.models import AgentToken
+            from core.models import AgentToken  # pylint: disable=import-outside-toplevel
             agent_token = AgentToken.validate(token)
             if agent_token:
                 return agent_token.user_id
             return None
-        except Exception as e:
-            logger.warning(f"Token validation failed: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            logger.warning("Token validation failed: %s", e)
             return None
 
     @database_sync_to_async
     def _register_node(self, node_id, gpu_info, user_id):
-        from .models import Node
-        from core.models import User
+        """Create or update a Node record for the connecting provider."""
+        from .models import Node  # pylint: disable=import-outside-toplevel
+        from core.models import User  # pylint: disable=import-outside-toplevel
         owner = User.objects.get(id=user_id)
         node, created = Node.objects.update_or_create(
             node_id=node_id,
@@ -324,20 +354,22 @@ class GPUConsumer(AsyncWebsocketConsumer):
             }
         )
         action = "Created" if created else "Updated"
-        logger.info(f"{action} Node: {node} (owner: {owner.username})")
+        logger.info("%s Node: %s (owner: %s)", action, node, owner.username)
         return owner.username
 
     @database_sync_to_async
     def _mark_node_inactive(self, node_id):
-        from .models import Node
+        """Set a node to inactive when its WebSocket disconnects."""
+        from .models import Node  # pylint: disable=import-outside-toplevel
         Node.objects.filter(node_id=node_id).update(is_active=False)
-        logger.info(f"Node {node_id} marked inactive")
+        logger.info("Node %s marked inactive", node_id)
 
     @database_sync_to_async
     def _complete_job(self, task_id, result_data, provider_user_id):
-        from .models import Job
-        from core.models import User
-        from payments.models import CreditLog
+        """Mark a job as COMPLETED, credit provider, debit consumer."""
+        from .models import Job  # pylint: disable=import-outside-toplevel
+        from core.models import User  # pylint: disable=import-outside-toplevel
+        from payments.models import CreditLog  # pylint: disable=import-outside-toplevel
         try:
             job = Job.objects.get(id=task_id)
             job.status = "COMPLETED"
@@ -352,55 +384,74 @@ class GPUConsumer(AsyncWebsocketConsumer):
                     provider = User.objects.get(id=provider_user_id)
                     provider.wallet_balance += PROVIDER_SHARE
                     provider.save()
+                    model_name = job.input_data.get(
+                        "model", "unknown",
+                    )
                     CreditLog.objects.create(
                         user=provider,
                         amount=PROVIDER_SHARE,
-                        description=f"Earned: Job #{task_id} completed (model: {job.input_data.get('model', 'unknown')})"
+                        description=(
+                            f"Earned: Job #{task_id} completed"
+                            f" (model: {model_name})"
+                        ),
                     )
-                    # Also log the consumer debit
                     CreditLog.objects.get_or_create(
                         user=job.user,
                         amount=-JOB_COST,
-                        description=f"Spent: Job #{task_id} (model: {job.input_data.get('model', 'unknown')})",
-                        defaults={"created_at": job.created_at}
+                        description=(
+                            f"Spent: Job #{task_id}"
+                            f" (model: {model_name})"
+                        ),
+                        defaults={"created_at": job.created_at},
                     )
-                    logger.info(f"💰 Provider {provider.username} earned ${PROVIDER_SHARE} for Job {task_id}")
+                    logger.info(
+                        "Provider %s earned $%s for Job %s",
+                        provider.username, PROVIDER_SHARE, task_id,
+                    )
                 except User.DoesNotExist:
-                    logger.error(f"Provider user {provider_user_id} not found")
+                    logger.error(
+                        "Provider user %s not found", provider_user_id,
+                    )
 
-            logger.info(f"Job {task_id} completed successfully")
+            logger.info("Job %s completed successfully", task_id)
         except Job.DoesNotExist:
-            logger.error(f"Job {task_id} not found")
+            logger.error("Job %s not found", task_id)
 
     @database_sync_to_async
     def _fail_job(self, task_id, error_data):
-        from .models import Job
+        """Mark a job as FAILED with error details."""
+        from .models import Job  # pylint: disable=import-outside-toplevel
         try:
             job = Job.objects.get(id=task_id)
             job.status = "FAILED"
             job.result = error_data
             job.completed_at = timezone.now()
             job.save()
-            logger.error(f"Job {task_id} failed: {error_data}")
+            logger.error("Job %s failed: %s", task_id, error_data)
         except Job.DoesNotExist:
-            logger.error(f"Job {task_id} not found")
+            logger.error("Job %s not found", task_id)
 
 class DashboardConsumer(AsyncWebsocketConsumer):
+    """Sends real-time dashboard updates to authenticated frontend users."""
+
     async def connect(self):
+        """Join public + private groups, authenticate, and send initial state."""
         self.user_id = None
         self.group_name = "dashboard_updates"
-        
+
         # 1. Join public group
         await self.channel_layer.group_add(
             self.group_name,
             self.channel_name
         )
-        
+
         # 2. Authenticate User (via query param ?token=...)
         query_string = self.scope.get("query_string", b"").decode("utf-8")
-        params = dict(qs.split("=") for qs in query_string.split("&") if "=" in qs)
+        params = dict(
+            qs.split("=") for qs in query_string.split("&") if "=" in qs
+        )
         token = params.get("token")
-        
+
         if token:
             user = await self._get_user_from_token(token)
             if user:
@@ -410,11 +461,13 @@ class DashboardConsumer(AsyncWebsocketConsumer):
                     self.user_group,
                     self.channel_name
                 )
-                logger.info(f"Dashboard WS: User {user.username} connected")
+                logger.info(
+                    "Dashboard WS: User %s connected", user.username,
+                )
 
-        self.provider_days = 30 # Default
+        self.provider_days = 30
         await self.accept()
-        
+
         # 3. Send Initial Public Snapshot
         stats = await self._get_stats()
         models = await self._get_models()
@@ -435,14 +488,12 @@ class DashboardConsumer(AsyncWebsocketConsumer):
                 "balance": str(balance)
             }))
             # Job history could be served here or fetched via REST initially.
-            # Usually REST for initial list is fine, and WS for updates.
-            # But let's send recent jobs for "streaming" feeel.
             jobs = await self._get_recent_jobs(self.user_id)
             await self.send(json.dumps({
                 "type": "jobs_update",
                 "jobs": jobs
             }, default=str))
-            
+
             # 5. Send Initial Provider Stats
             provider_stats = await self._get_provider_stats_async(self.user_id, self.provider_days)
             await self.send(json.dumps({
@@ -451,6 +502,7 @@ class DashboardConsumer(AsyncWebsocketConsumer):
             }))
 
     async def disconnect(self, close_code):
+        """Leave groups on WebSocket disconnect."""
         await self.channel_layer.group_discard(
             self.group_name,
             self.channel_name
@@ -462,40 +514,46 @@ class DashboardConsumer(AsyncWebsocketConsumer):
             )
 
     async def receive(self, text_data):
+        """Handle incoming messages (e.g. subscribe_provider_stats)."""
         try:
             data = json.loads(text_data)
             msg_type = data.get("type")
-            
+
             if msg_type == "subscribe_provider_stats":
                 self.provider_days = int(data.get("days", 30))
                 if self.user_id:
-                    stats = await self._get_provider_stats_async(self.user_id, self.provider_days)
+                    stats = await self._get_provider_stats_async(
+                        self.user_id, self.provider_days,
+                    )
                     await self.send(json.dumps({
                         "type": "provider_stats_update",
                         "stats": stats
                     }))
-        except Exception as e:
-            logger.error(f"DashboardConsumer receive error: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("DashboardConsumer receive error: %s", e)
 
     async def dashboard_update(self, event):
         """Handle broadcast messages (public or private)."""
         msg = event["data"]
-        
-        # If this is a generic trigger to refresh provider stats, calculate them locally for this user
+
+        # If this is a trigger to refresh provider stats, calculate locally
         if msg.get("type") == "refresh_provider_stats" and self.user_id:
-             stats = await self._get_provider_stats_async(self.user_id, self.provider_days)
-             await self.send(json.dumps({
-                 "type": "provider_stats_update",
-                 "stats": stats
-             }))
-             return
+            stats = await self._get_provider_stats_async(
+                self.user_id, self.provider_days,
+            )
+            await self.send(json.dumps({
+                "type": "provider_stats_update",
+                "stats": stats
+            }))
+            return
 
         await self.send(json.dumps(msg, default=str))
 
     @database_sync_to_async
     def _get_user_from_token(self, token):
-        from rest_framework_simplejwt.tokens import AccessToken
-        from core.models import User
+        """Validate a JWT access token and return the user, or None."""
+        from rest_framework_simplejwt.tokens import AccessToken  # pylint: disable=import-outside-toplevel
+        from core.models import User  # pylint: disable=import-outside-toplevel
         try:
             access_token = AccessToken(token)
             user_id = access_token.payload.get("user_id")
@@ -505,72 +563,93 @@ class DashboardConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _get_balance(self, user_id):
-        from core.models import User
+        """Return the wallet balance for the given user."""
+        from core.models import User  # pylint: disable=import-outside-toplevel
         try:
             return User.objects.get(id=user_id).wallet_balance
-        except:
+        except Exception:  # pylint: disable=broad-except
             return Decimal("0.00")
 
     @database_sync_to_async
     def _get_recent_jobs(self, user_id):
-        from .models import Job
-        # Return last 10 jobs
-        jobs = Job.objects.filter(user_id=user_id).order_by('-created_at')[:10]
+        """Return the 10 most recent jobs for the given user."""
+        from .models import Job  # pylint: disable=import-outside-toplevel
+        jobs = Job.objects.filter(
+            user_id=user_id,
+        ).order_by('-created_at')[:10]
         result = []
         for job in jobs:
+            input_data = job.input_data or {}
+            is_dict = isinstance(input_data, dict)
             result.append({
                 "id": job.id,
                 "status": job.status,
-                "prompt": (job.input_data or {}).get("prompt", "") if isinstance(job.input_data, dict) else str(job.input_data),
-                "model": (job.input_data or {}).get("model", "") if isinstance(job.input_data, dict) else "unknown",
+                "prompt": (
+                    input_data.get("prompt", "")
+                    if is_dict else str(input_data)
+                ),
+                "model": (
+                    input_data.get("model", "")
+                    if is_dict else "unknown"
+                ),
                 "cost": str(job.cost) if job.cost else None,
                 "result": job.result,
                 "created_at": str(job.created_at),
-                "completed_at": str(job.completed_at) if job.completed_at else None
+                "completed_at": (
+                    str(job.completed_at)
+                    if job.completed_at else None
+                ),
             })
         return result
 
     @database_sync_to_async
     def _get_stats(self):
-        from .models import Node, Job
+        """Return network stats for the dashboard."""
+        from .models import Node, Job  # pylint: disable=import-outside-toplevel
         active_nodes = Node.objects.filter(is_active=True).count()
         completed_jobs = Job.objects.filter(status="COMPLETED").count()
-        models = self._get_models_sync()
+        available = self._get_models_sync()
         return {
             "active_nodes": active_nodes,
             "completed_jobs": completed_jobs,
-            "available_models": len(models)
+            "available_models": len(available)
         }
 
     @database_sync_to_async
     def _get_models(self):
+        """Return available models aggregated from active nodes."""
         return self._get_models_sync()
 
     def _get_models_sync(self):
-        from .models import Node
+        """Synchronous helper: aggregate model counts from active nodes."""
+        from .models import Node  # pylint: disable=import-outside-toplevel
         nodes = Node.objects.filter(is_active=True)
         model_counts = {}
         for node in nodes:
             info = node.gpu_info or {}
-            models = info.get("models", [])
-            for m in models:
+            node_models = info.get("models", [])
+            for m in node_models:
                 if isinstance(m, dict):
                     name = m.get("name")
-                else: 
-                     name = m # Handle string list if legacy
-                
+                else:
+                    name = m
+
                 if name:
                     model_counts[name] = model_counts.get(name, 0) + 1
-        
-        return [{"name": k, "providers": v} for k, v in model_counts.items()]
+
+        return [
+            {"name": k, "providers": v}
+            for k, v in model_counts.items()
+        ]
 
     @database_sync_to_async
     def _get_provider_stats_async(self, user_id, days):
-        from core.models import User
-        from .utils import get_provider_stats
+        """Fetch provider statistics for the given user."""
+        from core.models import User  # pylint: disable=import-outside-toplevel
+        from .utils import get_provider_stats  # pylint: disable=import-outside-toplevel
         try:
             user = User.objects.get(id=user_id)
             return get_provider_stats(user, days)
-        except Exception as e:
-            logger.error(f"Error getting provider stats: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("Error getting provider stats: %s", e)
             return None

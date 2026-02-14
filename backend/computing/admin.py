@@ -1,3 +1,2 @@
-from django.contrib import admin
-
-# Register your models here.
+"""Admin configuration for the computing module."""
+# Models are registered via default ModelAdmin (no custom admin needed yet).

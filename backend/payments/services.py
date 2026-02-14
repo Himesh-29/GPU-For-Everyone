@@ -1,10 +1,14 @@
-from django.db import transaction
-from .models import CreditLog, Transaction
+"""Business logic for wallet credits and payment processing."""
 from django.contrib.auth import get_user_model
+from django.db import transaction
+
+from .models import CreditLog, Transaction
 
 User = get_user_model()
 
+
 class CreditService:
+    """Service class for processing transactions and credit transfers."""
     @staticmethod
     @transaction.atomic
     def process_transaction(transaction_id):
@@ -15,7 +19,7 @@ class CreditService:
             txn = Transaction.objects.select_for_update().get(id=transaction_id)
             if txn.status != 'PENDING':
                 return False
-            
+
             user = txn.user
             if txn.type == 'DEPOSIT':
                 user.wallet_balance += txn.amount
@@ -30,15 +34,15 @@ class CreditService:
                     txn.status = 'FAILED'
                     txn.save()
                     return False
-                
+
                 user.wallet_balance -= txn.amount
                 CreditLog.objects.create(
                     user=user,
                     amount=-txn.amount,
-                    description=f"Withdrawal request"
+                    description="Withdrawal request"
                 )
-                txn.status = 'SUCCESS' # Or PENDING_APPROVAL
-            
+                txn.status = 'SUCCESS'
+
             txn.save()
             user.save()
             return True
@@ -53,11 +57,19 @@ class CreditService:
         """
         if sender.wallet_balance < amount:
             raise ValueError("Insufficient funds")
-        
+
         sender.wallet_balance -= amount
         sender.save()
-        CreditLog.objects.create(user=sender, amount=-amount, description=f"Payment for Job {job_id}")
+        CreditLog.objects.create(
+            user=sender,
+            amount=-amount,
+            description=f"Payment for Job {job_id}",
+        )
 
         receiver.wallet_balance += amount
         receiver.save()
-        CreditLog.objects.create(user=receiver, amount=amount, description=f"Earnings for Job {job_id}")
+        CreditLog.objects.create(
+            user=receiver,
+            amount=amount,
+            description=f"Earnings for Job {job_id}",
+        )

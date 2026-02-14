@@ -2,21 +2,23 @@
 Test Suite: Core User Model
 Covers: User creation, password hashing, wallet defaults
 """
-import pytest
-from core.models import User
 from decimal import Decimal
+
+import pytest
+
+from core.models import User
 
 
 @pytest.mark.django_db
-def test_user_creation():
+def test_user_creation():  # pylint: disable=missing-function-docstring
     user = User.objects.create_user(username='testuser', password='password')
     assert user.username == 'testuser'
     assert user.check_password('password')
-    assert user.wallet_balance == Decimal('100.00')  # PoC default
+    assert user.wallet_balance == Decimal('100.00')
 
 
 @pytest.mark.django_db
-def test_wallet_update():
+def test_wallet_update():  # pylint: disable=missing-function-docstring
     user = User.objects.create_user(username='testuser', password='password')
     user.wallet_balance += Decimal('50.00')
     user.save()
@@ -25,7 +27,7 @@ def test_wallet_update():
 
 
 @pytest.mark.django_db
-def test_wallet_deduction():
+def test_wallet_deduction():  # pylint: disable=missing-function-docstring
     user = User.objects.create_user(username='spender', password='password')
     user.wallet_balance -= Decimal('25.00')
     user.save()

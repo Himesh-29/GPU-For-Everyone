@@ -1,11 +1,16 @@
+"""Views for wallet balance, deposits, and payment webhooks."""
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
 from .models import Transaction, CreditLog
 from .serializers import TransactionSerializer, CreditLogSerializer
 from .services import CreditService
 
+
 class WalletBalanceView(APIView):
+    """Return the user's wallet balance and credit log history."""
+
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request):
@@ -17,6 +22,8 @@ class WalletBalanceView(APIView):
         })
 
 class DepositView(generics.CreateAPIView):
+    """Create a new deposit transaction."""
+
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
     permission_classes = (permissions.IsAuthenticated,)
@@ -30,7 +37,7 @@ class MockPaymentWebhookView(APIView):
     """
     Simulates a webhook from Stripe/Razorpay to confirm payment.
     """
-    def post(self, request, transaction_id):
+    def post(self, _request, transaction_id):
         # Secure this endpoint in production!
         success = CreditService.process_transaction(transaction_id)
         if success:

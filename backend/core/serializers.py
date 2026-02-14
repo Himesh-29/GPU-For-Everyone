@@ -1,18 +1,24 @@
-from rest_framework import serializers
+"""Serializers for user registration and profile endpoints."""
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from rest_framework import serializers
 
 User = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
+    """Read-only serializer exposing basic user info and wallet."""
+
     class Meta:
+        """Meta options for UserSerializer."""
         model = User
         fields = ('id', 'username', 'email', 'role', 'wallet_balance')
         read_only_fields = ('wallet_balance',)
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    """Serializer for new user registration with password validation."""
+
     password = serializers.CharField(
         write_only=True,
         min_length=8,
@@ -20,6 +26,8 @@ class RegisterSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
+        """Meta options for RegisterSerializer."""
+
         model = User
         fields = ('username', 'email', 'password', 'role')
 

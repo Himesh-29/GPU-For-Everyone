@@ -1,3 +1,4 @@
+"""URL configuration for the computing module."""
 from django.urls import path
 from .views import (
     JobSubmissionView, JobDetailView, JobListView,

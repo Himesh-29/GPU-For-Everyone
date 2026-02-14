@@ -22,14 +22,17 @@ Flow:
   6. Redirects to frontend: /oauth/callback#access=xxx&refresh=xxx&user=xxx
   7. React reads tokens from URL hash, stores them, done!
 """
+import json
+import logging
+
 from django.conf import settings
 from django.http import JsonResponse, HttpResponseRedirect
 from django.utils.http import urlencode
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework.authentication import SessionAuthentication
-import json
-import urllib.parse
+
+logger = logging.getLogger(__name__)
 
 
 class OAuthCompleteView(APIView):
@@ -46,9 +49,7 @@ class OAuthCompleteView(APIView):
     permission_classes = []
 
     def get(self, request):
-        import logging
-        logger = logging.getLogger(__name__)
-
+        """Handle OAuth completion redirect with JWT tokens."""
         user = request.user
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
 
@@ -76,7 +77,10 @@ class OAuthCompleteView(APIView):
         })
 
         redirect_url = f"{frontend_url}/oauth/callback#{fragment}"
-        logger.info(f"OAuth complete for user {user.username}, redirecting to frontend")
+        logger.info(
+            "OAuth complete for user %s, redirecting to frontend",
+            user.username,
+        )
 
         return HttpResponseRedirect(redirect_url)
 
@@ -91,6 +95,7 @@ class OAuthCallbackView(APIView):
     permission_classes = []
 
     def get(self, request):
+        """Exchange Django session for JWT via API call (legacy)."""
         user = request.user
         if not user or not user.is_authenticated:
             return JsonResponse(
