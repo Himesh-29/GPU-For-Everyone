@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -18,9 +19,22 @@ class GPUConsumer(AsyncWebsocketConsumer):
         )
         await self.accept()
         logger.info("WebSocket Connected")
+        # Start server-side keep-alive pings
+        self._ping_task = asyncio.ensure_future(self._keep_alive())
+
+    async def _keep_alive(self):
+        """Send periodic pings to keep the WebSocket alive during long inference."""
+        try:
+            while True:
+                await asyncio.sleep(15)
+                await self.send(json.dumps({"type": "ping"}, ensure_ascii=False))
+        except Exception:
+            pass  # Connection closed, stop pinging
 
     async def disconnect(self, close_code):
         logger.info(f"WebSocket Disconnected: {close_code}")
+        if hasattr(self, '_ping_task'):
+            self._ping_task.cancel()
         await self.channel_layer.group_discard(
             self.group_name,
             self.channel_name
@@ -39,7 +53,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
             logger.info(f"Registering Node: {self.node_id} with info {gpu_info}")
 
             await self._register_node(self.node_id, gpu_info)
-            await self.send(json.dumps({"type": "registered", "status": "ok"}))
+            await self.send(json.dumps({"type": "registered", "status": "ok"}, ensure_ascii=False))
 
         elif msg_type == "job_result":
             result = data.get("result", {})
@@ -65,7 +79,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
         await self.send(json.dumps({
             "type": "job_dispatch",
             "job_data": job_data
-        }))
+        }, ensure_ascii=False))
 
     # --- DB Operations (sync_to_async wrappers) ---
 
