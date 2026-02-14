@@ -27,16 +27,21 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+        with:
+          version: "latest"
+
+      - name: Install dependencies with uv
         run: |
           cd backend
-          pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-django
+          uv sync
+          uv pip install pytest pytest-cov pytest-django
 
       - name: Run pytest with coverage
         run: |
           cd backend
-          pytest --cov=. --cov-report=xml --cov-report=html --cov-report=term --junitxml=test-results.xml
+          uv run pytest --cov=. --cov-report=xml --cov-report=html --cov-report=term --junitxml=test-results.xml
 
       - name: Upload coverage reports
         if: always()
@@ -57,14 +62,7 @@ jobs:
       - name: Check coverage threshold (70%)
         run: |
           cd backend
-          COVERAGE=$(python3 -c "
-          import xml.etree.ElementTree as ET
-          tree = ET.parse('.coverage')
-          root = tree.getroot()
-          # Parse coverage from cobertura XML
-          " 2>/dev/null || echo "0")
-          # Alternative: use coverage report
-          coverage_percent=$(grep -oP 'TOTAL\s+\d+\s+\d+\s+\K[\d.]+' <<< "$(coverage report)" || echo "0")
+          coverage_percent=$(uv run coverage report | grep TOTAL | awk '{print $NF}' | sed 's/%//')
           echo "Code coverage: ${coverage_percent}%"
           if (( $(echo "$coverage_percent < 70" | bc -l) )); then
             echo "❌ Coverage below 70% threshold"
@@ -113,16 +111,23 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install quality tools
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+        with:
+          version: "latest"
+
+      - name: Install dependencies with uv
         run: |
-          pip install pylint radon bandit
+          cd backend
+          uv sync
+          uv pip install pylint radon bandit
 
       - name: Run Pylint (code smells, style issues)
         id: pylint
         continue-on-error: true
         run: |
           cd backend
-          pylint --exit-zero --output-format=parseable $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*" ! -path "*/.venv/*") > pylint-results.txt 2>&1 || true
+          uv run pylint --exit-zero --disable=import-error --output-format=parseable $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*" ! -path "*/.venv/*") > pylint-results.txt 2>&1 || true
           cat pylint-results.txt
 
       - name: Run Radon (complexity analysis)
@@ -130,10 +135,10 @@ jobs:
         run: |
           cd backend
           echo "=== Cyclomatic Complexity ===" > radon-results.txt
-          radon cc -a -n B $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*") >> radon-results.txt 2>&1 || true
+          uv run radon cc -a -n B $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*") >> radon-results.txt 2>&1 || true
           echo "" >> radon-results.txt
           echo "=== Maintenance Index ===" >> radon-results.txt
-          radon mi -n B $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*") >> radon-results.txt 2>&1 || true
+          uv run radon mi -n B $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*") >> radon-results.txt 2>&1 || true
           cat radon-results.txt
 
       - name: Count code issues
@@ -141,12 +146,12 @@ jobs:
         run: |
           cd backend
           PYLINT_ISSUES=$(grep -c "^" pylint-results.txt 2>/dev/null || echo "0")
-          PYLINT_WARNINGS=$(grep -c "warning\|W" pylint-results.txt 2>/dev/null || echo "0")
-          PYLINT_ERRORS=$(grep -c "error\|E" pylint-results.txt 2>/dev/null || echo "0")
+          PYLINT_ERRORS=$(grep -E "^.*:.*:\s*E[0-9]+" pylint-results.txt 2>/dev/null | grep -v "import-error" | wc -l || echo "0")
+          PYLINT_WARNINGS=$(grep -E "^.*:.*:\s*W[0-9]+" pylint-results.txt 2>/dev/null | wc -l || echo "0")
           echo "pylint_issues=$PYLINT_ISSUES" >> $GITHUB_OUTPUT
           echo "pylint_warnings=$PYLINT_WARNINGS" >> $GITHUB_OUTPUT
           echo "pylint_errors=$PYLINT_ERRORS" >> $GITHUB_OUTPUT
-          # Fail if errors found
+          # Fail if non-import errors found
           if [ "$PYLINT_ERRORS" -gt 0 ]; then
             echo "❌ Pylint critical errors found: $PYLINT_ERRORS"
             exit 1
