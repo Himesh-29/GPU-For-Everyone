@@ -8,10 +8,14 @@ from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
+JOB_COST = Decimal("1.00")
+PROVIDER_SHARE = Decimal("0.80")  # Provider gets 80% of job cost
+
 
 class GPUConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.node_id = "unknown"
+        self.provider_user_id = None  # Will be set after JWT validation
         self.group_name = "gpu_nodes"
         await self.channel_layer.group_add(
             self.group_name,
@@ -19,7 +23,6 @@ class GPUConsumer(AsyncWebsocketConsumer):
         )
         await self.accept()
         logger.info("WebSocket Connected")
-        # Start server-side keep-alive pings
         self._ping_task = asyncio.ensure_future(self._keep_alive())
 
     async def _keep_alive(self):
@@ -29,7 +32,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
                 await asyncio.sleep(15)
                 await self.send(json.dumps({"type": "ping"}, ensure_ascii=False))
         except Exception:
-            pass  # Connection closed, stop pinging
+            pass
 
     async def disconnect(self, close_code):
         logger.info(f"WebSocket Disconnected: {close_code}")
@@ -39,7 +42,6 @@ class GPUConsumer(AsyncWebsocketConsumer):
             self.group_name,
             self.channel_name
         )
-        # Mark node inactive
         if self.node_id != "unknown":
             await self._mark_node_inactive(self.node_id)
 
@@ -50,10 +52,27 @@ class GPUConsumer(AsyncWebsocketConsumer):
         if msg_type == "register":
             self.node_id = data.get("node_id")
             gpu_info = data.get("gpu_info")
-            logger.info(f"Registering Node: {self.node_id} with info {gpu_info}")
+            auth_token = data.get("auth_token")
 
-            await self._register_node(self.node_id, gpu_info)
-            await self.send(json.dumps({"type": "registered", "status": "ok"}, ensure_ascii=False))
+            # Validate JWT and get user
+            user_id = await self._validate_token(auth_token)
+            if not user_id:
+                await self.send(json.dumps({
+                    "type": "auth_error",
+                    "error": "Invalid or expired token. Please re-login."
+                }, ensure_ascii=False))
+                await self.close()
+                return
+
+            self.provider_user_id = user_id
+            logger.info(f"Registering Node: {self.node_id} (user_id={user_id})")
+
+            username = await self._register_node(self.node_id, gpu_info, user_id)
+            await self.send(json.dumps({
+                "type": "registered",
+                "status": "ok",
+                "owner": username
+            }, ensure_ascii=False))
 
         elif msg_type == "job_result":
             result = data.get("result", {})
@@ -66,7 +85,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
 
             if task_id:
                 if status == "success":
-                    await self._complete_job(task_id, {"output": response_text})
+                    await self._complete_job(task_id, {"output": response_text}, self.provider_user_id)
                 else:
                     await self._fail_job(task_id, {"error": error})
 
@@ -81,17 +100,26 @@ class GPUConsumer(AsyncWebsocketConsumer):
             "job_data": job_data
         }, ensure_ascii=False))
 
-    # --- DB Operations (sync_to_async wrappers) ---
+    # --- DB Operations ---
 
     @database_sync_to_async
-    def _register_node(self, node_id, gpu_info):
+    def _validate_token(self, token):
+        """Validate a JWT access token and return user_id, or None."""
+        if not token:
+            return None
+        try:
+            from rest_framework_simplejwt.tokens import AccessToken
+            access = AccessToken(token)
+            return access['user_id']
+        except Exception as e:
+            logger.warning(f"JWT validation failed: {e}")
+            return None
+
+    @database_sync_to_async
+    def _register_node(self, node_id, gpu_info, user_id):
         from .models import Node
         from core.models import User
-        # Use a system provider user for unauth'd agents
-        owner, _ = User.objects.get_or_create(
-            username="system_provider",
-            defaults={"email": "provider@system.local", "role": "PROVIDER"}
-        )
+        owner = User.objects.get(id=user_id)
         node, created = Node.objects.update_or_create(
             node_id=node_id,
             defaults={
@@ -102,7 +130,8 @@ class GPUConsumer(AsyncWebsocketConsumer):
             }
         )
         action = "Created" if created else "Updated"
-        logger.info(f"{action} Node: {node}")
+        logger.info(f"{action} Node: {node} (owner: {owner.username})")
+        return owner.username
 
     @database_sync_to_async
     def _mark_node_inactive(self, node_id):
@@ -111,15 +140,40 @@ class GPUConsumer(AsyncWebsocketConsumer):
         logger.info(f"Node {node_id} marked inactive")
 
     @database_sync_to_async
-    def _complete_job(self, task_id, result_data):
+    def _complete_job(self, task_id, result_data, provider_user_id):
         from .models import Job
+        from core.models import User
+        from payments.models import CreditLog
         try:
             job = Job.objects.get(id=task_id)
             job.status = "COMPLETED"
             job.result = result_data
             job.completed_at = timezone.now()
-            job.cost = Decimal("1.00")
+            job.cost = JOB_COST
             job.save()
+
+            # Credit the provider
+            if provider_user_id:
+                try:
+                    provider = User.objects.get(id=provider_user_id)
+                    provider.wallet_balance += PROVIDER_SHARE
+                    provider.save()
+                    CreditLog.objects.create(
+                        user=provider,
+                        amount=PROVIDER_SHARE,
+                        description=f"Earned: Job #{task_id} completed (model: {job.input_data.get('model', 'unknown')})"
+                    )
+                    # Also log the consumer debit
+                    CreditLog.objects.get_or_create(
+                        user=job.user,
+                        amount=-JOB_COST,
+                        description=f"Spent: Job #{task_id} (model: {job.input_data.get('model', 'unknown')})",
+                        defaults={"created_at": job.created_at}
+                    )
+                    logger.info(f"💰 Provider {provider.username} earned ${PROVIDER_SHARE} for Job {task_id}")
+                except User.DoesNotExist:
+                    logger.error(f"Provider user {provider_user_id} not found")
+
             logger.info(f"Job {task_id} completed successfully")
         except Job.DoesNotExist:
             logger.error(f"Job {task_id} not found")

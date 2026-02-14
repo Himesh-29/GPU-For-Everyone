@@ -3,17 +3,39 @@ import json
 import logging
 import os
 import uuid
+import getpass
 import aiohttp
 import platform
 
 # Configuration
 SERVER_URL = os.environ.get("SERVER_URL", "ws://localhost:8000/ws/computing/")
+API_URL = os.environ.get("API_URL", "http://localhost:8000")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 NODE_ID = os.environ.get("NODE_ID", f"node-{uuid.uuid4().hex[:8]}")
-AUTH_TOKEN = os.environ.get("AUTH_TOKEN", "dummy-token")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("GPU-Agent")
+
+
+async def authenticate(username: str, password: str) -> str | None:
+    """Authenticate against the platform and return JWT access token."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{API_URL}/api/core/token/",
+                json={"username": username, "password": password}
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    logger.info(f"✅ Authenticated as '{username}'")
+                    return data.get("access")
+                else:
+                    error = await resp.text()
+                    logger.error(f"❌ Authentication failed: {error}")
+                    return None
+    except Exception as e:
+        logger.error(f"❌ Could not reach server: {e}")
+        return None
 
 
 async def check_ollama_status():
@@ -72,15 +94,9 @@ async def execute_task(task_data):
 
 
 async def handle_job(ws, job_data):
-    """Run a job in the background and send the result back.
-    
-    This runs as a separate asyncio task so it does NOT block the 
-    WebSocket message loop. The agent can still respond to heartbeats 
-    and other messages while the inference is running.
-    """
+    """Run a job in the background and send the result back."""
     result = await execute_task(job_data)
     try:
-        # Use ensure_ascii=False so Gujarati, Hindi, Chinese, etc. are sent as-is
         payload = json.dumps({"type": "job_result", "result": result}, ensure_ascii=False)
         await ws.send_str(payload)
         logger.info(f"Result for Task {result.get('task_id')} sent successfully")
@@ -88,7 +104,7 @@ async def handle_job(ws, job_data):
         logger.error(f"Failed to send result for Task {result.get('task_id')}: {e}")
 
 
-async def agent_loop():
+async def agent_loop(auth_token: str):
     """Main Agent Loop: Connects to Server, Registers, and Handles Tasks."""
     models = await check_ollama_status()
     if not models:
@@ -102,10 +118,11 @@ async def agent_loop():
                 async with session.ws_connect(SERVER_URL, heartbeat=20) as ws:
                     logger.info(f"Connected to Server at {SERVER_URL}")
 
-                    # 1. Register
+                    # 1. Register with auth token
                     register_msg = {
                         "type": "register",
                         "node_id": NODE_ID,
+                        "auth_token": auth_token,
                         "gpu_info": {
                             "provider": "Ollama-Local",
                             "models": models,
@@ -121,9 +138,12 @@ async def agent_loop():
                             msg_type = data.get("type")
 
                             if msg_type == "registered":
-                                logger.info(f"✅ Node registered successfully as {NODE_ID}")
+                                owner = data.get("owner", "unknown")
+                                logger.info(f"✅ Node registered as {NODE_ID} (owner: {owner})")
+                            elif msg_type == "auth_error":
+                                logger.error(f"❌ Authentication rejected: {data.get('error')}")
+                                return  # Stop agent — token invalid
                             elif msg_type == "job_dispatch":
-                                # CRITICAL: Run as background task — do NOT await here
                                 asyncio.create_task(handle_job(ws, data.get("job_data")))
                             elif msg_type == "ping":
                                 await ws.send_str(json.dumps({"type": "pong"}))
@@ -144,17 +164,38 @@ async def agent_loop():
         await asyncio.sleep(5)
 
 
-if __name__ == "__main__":
+def main():
     print(f"""
-╔══════════════════════════════════════════╗
-║       GPU Connect Agent v1.1            ║
-║                                          ║
-║  Node ID:  {NODE_ID:<28} ║
-║  Server:   {SERVER_URL:<28} ║
-║  Ollama:   {OLLAMA_URL:<28} ║
-╚══════════════════════════════════════════╝
+╔══════════════════════════════════════════════════╗
+║           GPU Connect Agent v2.0                ║
+║                                                  ║
+║  Node ID:  {NODE_ID:<36} ║
+║  Server:   {API_URL:<36} ║
+║  Ollama:   {OLLAMA_URL:<36} ║
+╚══════════════════════════════════════════════════╝
 """)
+
+    # --- CLI Authentication ---
+    print("  Login to GPU Connect to start earning credits.\n")
+    username = input("  Username: ").strip()
+    password = getpass.getpass("  Password: ").strip()
+
+    if not username or not password:
+        print("  ❌ Username and password are required.")
+        return
+
+    token = asyncio.run(authenticate(username, password))
+    if not token:
+        print("\n  ❌ Login failed. Check credentials and try again.")
+        return
+
+    print(f"\n  ✅ Logged in as '{username}'. Starting GPU agent...\n")
+
     try:
-        asyncio.run(agent_loop())
+        asyncio.run(agent_loop(token))
     except KeyboardInterrupt:
         logger.info("Agent stopped by user")
+
+
+if __name__ == "__main__":
+    main()
