@@ -201,7 +201,7 @@ async def agent_loop(auth_token: str):
 
 def get_dashboard_url():
     """Get the frontend dashboard URL."""
-    frontend_url = os.environ.get("FRONTEND_URL", "https://gpuconnect.vercel.app")
+    frontend_url = os.environ.get("FRONTEND_URL", "https://gpu-connect.vercel.app")
     return f"{frontend_url}/dashboard?tab=provider"
 
 
