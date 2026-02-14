@@ -10,15 +10,25 @@
 - Fixed Pylint false positives by adding `pylint-django` and cleaning up lint issues.
 - Stabilized serializers and tests (read-only field handling, async test fixes) and added `pytest-asyncio` support.
 - Hardened the deployment workflow:
-	- Validates required secrets before attempting deploys.
-	- Added `workflow_dispatch` for manual deploy runs.
-	- Standardized Render secret name to `RENDER_DEPLOY_HOOK` and added `DEPLOYMENT.md` with setup instructions.
-	- Improved Vercel integration (`VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`) and clearer error messages.
+  - Validates deploy configuration before attempting deployments and fails fast with clear errors.
+  - Added `workflow_dispatch` for safe manual deploys and clearer logs.
+  - Added `DEPLOYMENT.md` with setup instructions and troubleshooting for maintainers.
+  - Improved Vercel and Render integration and clearer error messages.
 
-### Action Items
+### CI Workflows
 
-- Add repository secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `RENDER_DEPLOY_HOOK` (see `DEPLOYMENT.md`).
-- Optionally review GitHub Environment protections for `production-frontend` / `production-backend`.
+- `Test & Code Quality` (CI):
+	- Runs unit and async tests, enforces a coverage gate (historically 70%; current coverage: ~95%).
+	- Runs static analysis (`pylint` with `pylint-django`), `radon` complexity checks, and other quality gates.
+	- On success, it triggers the deploy workflow via `workflow_run`.
+
+- `Security Scan`:
+	- Runs repository security checks including CodeQL analysis and dependency scanning.
+	- Reports potential vulnerabilities and fails on critical findings to prevent risky deployments.
+
+Maintenance / Next Steps
+
+- Review deployment configuration and environment protections in the repository settings as needed. See `DEPLOYMENT.md` for internal setup and troubleshooting.
 
 ---
 
