@@ -25,9 +25,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
+  const logoutRef = React.useRef(() => {});
+
   useEffect(() => {
     if (token) {
-      // Set default header
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       fetchProfile();
     } else {
@@ -36,9 +37,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [token]);
 
+  // Global 401 interceptor — auto-logout on expired token
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401 && token) {
+          logoutRef.current();
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => axios.interceptors.response.eject(interceptor);
+  }, [token]);
+
   const fetchProfile = async () => {
     try {
-      // Assuming API URL from environment
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const response = await axios.get(`${API_URL}/api/core/profile/`);
       setUser(response.data);
@@ -60,6 +74,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     setUser(null);
   };
+
+  logoutRef.current = logout;
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token, loading }}>

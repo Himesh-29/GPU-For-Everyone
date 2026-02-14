@@ -403,6 +403,16 @@ const LandingPage = () => {
 };
 
 
+/* ===== Protected Route ===== */
+import { Navigate } from 'react-router-dom';
+
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return <div style={{ padding: '100px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</div>;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+};
+
 /* ===== App ===== */
 function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -417,7 +427,7 @@ function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           </Routes>
         </div>
       </AuthProvider>

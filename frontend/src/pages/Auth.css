@@ -56,6 +56,16 @@
 }
 .auth-form input::placeholder { color: var(--text-muted); }
 
+/* Password eye toggle — make browser-native reveal button visible on dark bg */
+.auth-form input[type="password"]::-ms-reveal,
+.auth-form input[type="password"]::-ms-clear {
+  filter: invert(1);
+}
+.auth-form input::-webkit-credentials-auto-fill-button,
+.auth-form input::-webkit-textfield-decoration-container {
+  filter: invert(1);
+}
+
 .auth-form button[type="submit"],
 .auth-form .btn-primary {
   width: 100%;
