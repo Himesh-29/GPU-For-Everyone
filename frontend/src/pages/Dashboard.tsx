@@ -36,8 +36,8 @@ const JobHistory = ({ token }: { token: string | null }) => {
     const [jobs, setJobs] = useState<JobData[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const fetchJobs = async () => {
-        setLoading(true);
+    const fetchJobs = async (silent = false) => {
+        if (!silent) setLoading(true);
         try {
             const resp = await axios.get(`${API_URL}/api/computing/jobs/`, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -47,7 +47,11 @@ const JobHistory = ({ token }: { token: string | null }) => {
         setLoading(false);
     };
 
-    useEffect(() => { fetchJobs(); }, []);
+    useEffect(() => {
+        fetchJobs();
+        const interval = setInterval(() => fetchJobs(true), 2000);
+        return () => clearInterval(interval);
+    }, []);
 
     const statusStyle = (s: string) => {
         const colors: Record<string, string> = {
@@ -61,7 +65,7 @@ const JobHistory = ({ token }: { token: string | null }) => {
         <div className="glass-card">
             <div className="card-header">
                 <h3>Job History</h3>
-                <button className="btn-icon" onClick={fetchJobs}><RefreshCw size={14} /></button>
+                <button className="btn-icon" onClick={() => fetchJobs()}><RefreshCw size={14} /></button>
             </div>
             {loading ? <p style={{ color: 'var(--text-muted)' }}>Loading...</p> :
              jobs.length === 0 ? (
@@ -222,8 +226,6 @@ export const Dashboard: React.FC = () => {
     const [activeTab, setActiveTab] = useState('overview');
     const [balance, setBalance] = useState<number>(0);
 
-    useEffect(() => { if (user) setBalance(Number(user.wallet_balance)); }, [user]);
-
     const refreshBalance = async () => {
         try {
             const resp = await axios.get(`${API_URL}/api/core/profile/`, {
@@ -232,6 +234,13 @@ export const Dashboard: React.FC = () => {
             setBalance(Number(resp.data.wallet_balance));
         } catch { /* ignore */ }
     };
+
+    useEffect(() => {
+        if (user) setBalance(Number(user.wallet_balance));
+        refreshBalance();
+        const interval = setInterval(refreshBalance, 2000);
+        return () => clearInterval(interval);
+    }, [user]);
 
     if (!user) return <div style={{ padding: '100px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</div>;
 
