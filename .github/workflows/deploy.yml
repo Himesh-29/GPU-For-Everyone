@@ -2,7 +2,7 @@ name: Deploy to Vercel & Render
 
 # ─────────────────────────────────────────────────────────────────
 # This workflow deploys ONLY after the "Test & Code Quality"
-# workflow succeeds on main.
+# workflow succeeds on main, OR when manually triggered.
 #
 # Auto-deploy on Vercel and Render is DISABLED via:
 #   • frontend/vercel.json  →  "git": { "deploymentEnabled": false }
@@ -10,6 +10,14 @@ name: Deploy to Vercel & Render
 #
 # Deployments are triggered exclusively by this workflow using
 # the Vercel CLI and Render deploy hooks.
+#
+# Required secrets (configure as REPOSITORY secrets in GitHub):
+#   • VERCEL_TOKEN        – Personal access token from vercel.com/account/tokens
+#   • VERCEL_ORG_ID       – From .vercel/project.json after `vercel link`
+#   • VERCEL_PROJECT_ID   – From .vercel/project.json after `vercel link`
+#   • RENDER_DEPLOY_HOOK  – Deploy hook URL from Render dashboard
+#
+# See DEPLOYMENT.md for detailed setup instructions.
 # ─────────────────────────────────────────────────────────────────
 
 on:
@@ -17,6 +25,7 @@ on:
     workflows: [Test & Code Quality]
     types: [completed]
     branches: [main]
+  workflow_dispatch:   # Allow manual trigger for testing
 
 permissions:
   contents: read
@@ -34,6 +43,12 @@ jobs:
       - name: Check workflow status
         id: gate
         run: |
+          # Manual dispatch always passes the gate
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "approved=true" >> $GITHUB_OUTPUT
+            echo "✅ Manual dispatch — proceeding with deployment"
+            exit 0
+          fi
           if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
             echo "approved=false" >> $GITHUB_OUTPUT
             echo "❌ Quality checks failed — blocking deployment"
@@ -57,6 +72,26 @@ jobs:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
+      - name: Validate required secrets
+        run: |
+          MISSING=""
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            MISSING="${MISSING}  • VERCEL_TOKEN\n"
+          fi
+          if [ -z "$VERCEL_ORG_ID" ]; then
+            MISSING="${MISSING}  • VERCEL_ORG_ID\n"
+          fi
+          if [ -z "$VERCEL_PROJECT_ID" ]; then
+            MISSING="${MISSING}  • VERCEL_PROJECT_ID\n"
+          fi
+          if [ -n "$MISSING" ]; then
+            echo "❌ Missing required secrets:"
+            echo -e "$MISSING"
+            echo "See DEPLOYMENT.md for setup instructions."
+            exit 1
+          fi
+          echo "✅ All Vercel secrets are configured"
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -87,9 +122,24 @@ jobs:
       name: production-backend
       url: https://gpu-connect-api.onrender.com
     steps:
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+            echo "❌ Missing required secret: RENDER_DEPLOY_HOOK"
+            echo ""
+            echo "To fix this:"
+            echo "  1. Go to Render Dashboard → gpu-connect-api → Settings → Deploy Hook"
+            echo "  2. Copy the deploy hook URL"
+            echo "  3. Add it as a GitHub repository secret named RENDER_DEPLOY_HOOK"
+            echo ""
+            echo "See DEPLOYMENT.md for detailed setup instructions."
+            exit 1
+          fi
+          echo "✅ Render deploy hook is configured"
+
       - name: Trigger Render deploy hook
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.RENDER_DEPLOY_WEBHOOK }}")
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.RENDER_DEPLOY_HOOK }}")
           if [ "$RESPONSE" -ge 200 ] && [ "$RESPONSE" -lt 300 ]; then
             echo "✅ Backend deployment triggered on Render (HTTP $RESPONSE)"
           else
