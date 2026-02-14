@@ -1,0 +1,25 @@
+# Gitleaks config — reduce false positives
+# https://github.com/gitleaks/gitleaks#configuration
+
+title = "GPU Connect Gitleaks Config"
+
+# Paths to ignore during scanning
+[allowlist]
+  description = "Known safe paths and patterns"
+  paths = [
+    '''\.github/workflows/.*\.yml$''',
+    '''frontend/package-lock\.json$''',
+    '''backend/uv\.lock$''',
+    '''\.secrets\.baseline$''',
+    '''node_modules/''',
+    '''__pycache__/''',
+    '''\.pyc$''',
+    '''migrations/''',
+  ]
+  regexTarget = "line"
+  regexes = [
+    # Ignore placeholder/example values
+    '''(?i)(example|placeholder|changeme|your[_-]?key[_-]?here)''',
+    # Ignore GitHub Actions expressions
+    '''\$\{\{.*secrets\..*\}\}''',
+  ]
