@@ -40,11 +40,19 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.sites",
     # Third Party
     "rest_framework",
     "rest_framework_simplejwt",
     "corsheaders",
     "channels",
+    # OAuth (django-allauth)
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.google",
+    "allauth.socialaccount.providers.github",
+    "allauth.socialaccount.providers.microsoft",
 
     # Local Apps
     "core",
@@ -60,9 +68,20 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+# SESSION / CSRF SETTINGS FOR LOCALHOST DEV
+# Essential for OAuth callback to work across ports (5173 -> 8000)
+# Use None/True to allow cross-site (cross-port) cookies on localhost
+SESSION_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SAMESITE = 'None'
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_DOMAIN = None
+CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 ROOT_URLCONF = "config.urls"
 
@@ -98,6 +117,11 @@ DATABASES = {
     #     default=os.environ.get("DATABASE_URL", "postgresql://gpu_user:gpu_password@localhost:5432/gpu_sharing"),
     #     conn_max_age=600,
     # )
+}
+
+# Django 6.0 removed sites migrations; allauth still needs them
+MIGRATION_MODULES = {
+    "sites": "custom_migrations.sites",
 }
 
 
@@ -140,7 +164,16 @@ STATIC_URL = "static/"
 AUTH_USER_MODEL = "core.User"
 
 # CORS
-CORS_ALLOW_ALL_ORIGINS = True # For dev
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+]
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 
 # CELERY
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
@@ -176,3 +209,57 @@ SIMPLE_JWT = {
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- django-allauth ---
+SITE_ID = 1
+
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+
+ACCOUNT_LOGIN_METHODS = {"username"}
+# ACCOUNT_EMAIL_REQUIRED is deprecated in favor of ACCOUNT_SIGNUP_FIELDS
+ACCOUNT_EMAIL_VERIFICATION = "none"  # Skip email verification in dev
+ACCOUNT_UNIQUE_EMAIL = True
+
+# Explicitly define signup fields (with '*' for required) to fix deprecation warning
+ACCOUNT_SIGNUP_FIELDS = [
+    "username*",
+    "email*",
+    "password1*",  # Password
+    "password2*",  # Password confirmation
+]
+
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_LOGIN_ON_GET = True  # Skip "Continue?" interstitial
+
+# Frontend URL for OAuth redirects
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+LOGIN_REDIRECT_URL = FRONTEND_URL + "/oauth/callback"
+ACCOUNT_LOGOUT_REDIRECT_URL = FRONTEND_URL
+
+SOCIALACCOUNT_PROVIDERS = {
+    "google": {
+        "APP": {
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+            "secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+        },
+        "SCOPE": ["profile", "email"],
+        "AUTH_PARAMS": {"access_type": "online"},
+    },
+    "github": {
+        "APP": {
+            "client_id": os.environ.get("GITHUB_CLIENT_ID", ""),
+            "secret": os.environ.get("GITHUB_CLIENT_SECRET", ""),
+        },
+        "SCOPE": ["user:email"],
+    },
+    "microsoft": {
+        "APP": {
+            "client_id": os.environ.get("MICROSOFT_CLIENT_ID", ""),
+            "secret": os.environ.get("MICROSOFT_CLIENT_SECRET", ""),
+        },
+        "SCOPE": ["openid", "profile", "email"],
+    },
+}

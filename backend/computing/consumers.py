@@ -9,7 +9,7 @@ from decimal import Decimal
 logger = logging.getLogger(__name__)
 
 JOB_COST = Decimal("1.00")
-PROVIDER_SHARE = Decimal("0.80")  # Provider gets 80% of job cost
+PROVIDER_SHARE = Decimal("1.00")  # Provider gets 100% — fully decentralized, no platform fee
 
 
 class GPUConsumer(AsyncWebsocketConsumer):

@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { Dashboard } from './pages/Dashboard';
+import { OAuthCallback } from './pages/OAuthCallback';
 import axios from 'axios';
 import './App.css';
 import './pages/Auth.css';
@@ -427,6 +428,7 @@ function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/oauth/callback" element={<OAuthCallback />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           </Routes>
         </div>
