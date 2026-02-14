@@ -38,21 +38,38 @@
 ## 🏃‍♂️ Quick Start
 
 ### For Consumers (Rent Compute)
-1.  **Register**: Create an account at `http://localhost:5173/register`.
-2.  **Explore**: Browse the **Marketplace** to see live models.
+1.  **Register**: Create an account at [gpu-connect.vercel.app](https://gpu-connect.vercel.app/register).
+2.  **Explore**: Browse the **Marketplace** to see live models and available providers.
 3.  **Compute**: Go to the **Dashboard**, add funds (simulated), select a model, and submit your prompt.
 
 ### For Providers (Earn Credits)
-1.  **Install Ollama**: [Download Ollama](https://ollama.com/) and pull models (e.g., `ollama pull llama3.2`).
-2.  **Get Your Token**:
-    *   Log in to the **Dashboard** (`http://localhost:5173`).
-    *   Go to the **Provider** tab.
-    *   Click **Generate Agent Token** and copy it.
-3.  **Run the Agent**:
-    *   Download `gpu-connect.exe` (or run from source).
-    *   Run it: `.\gpu-connect-agent.exe`
-    *   **Paste your token** when prompted.
-4.  **Earn**: Your node registers securely and starts accepting jobs. Track earnings live in the Provider Dashboard!
+
+**Cross-Platform Support**: Windows, Linux (Raspberry Pi, Ubuntu, etc.), and macOS
+
+1.  **Download the Agent**: Go to [gpu-connect.vercel.app](https://gpu-connect.vercel.app) → **Integrate** section
+    - Windows: `.exe` file
+    - Linux: `.zip` file
+    - macOS: `.zip` file
+
+2.  **Install Ollama**: [Download Ollama](https://ollama.com/) and pull a model
+    ```bash
+    ollama pull tinyllama
+    ```
+
+3.  **Generate Token**:
+    - Log in to the **Dashboard**
+    - Go to **Provider** tab
+    - Click **Generate Agent Token** and copy it
+
+4.  **Run the Agent**:
+    - **Windows**: Double-click `gpu-connect-agent.exe`
+    - **Linux/macOS**: Extract the zip, run `./install.sh`, then follow the platform instructions
+
+5.  **Paste Token** and start earning! Track your earnings live in the Provider Dashboard.
+
+**📚 For detailed installation instructions**, see [INSTALLATION.md](INSTALLATION.md)
+
+---
 
 ## 💻 Developer Setup
 
