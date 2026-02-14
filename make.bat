@@ -14,30 +14,53 @@ echo Unknown target: %1
 goto help
 
 :agent
-echo Building GPU Connect Agent...
-cd agent
-pyinstaller --clean --onefile --name gpu-connect-agent agent_ollama.py --distpath . --noconfirm
+echo Building GPU Connect Agent (Windows)...
+cd agent\windows
+pyinstaller --clean --onefile --name gpu-connect-agent ..\agent_ollama.py --distpath . --noconfirm
 if exist gpu-connect-agent.exe (
-    copy /Y gpu-connect-agent.exe ..\frontend\public\downloads\gpu-connect.exe >nul 2>&1
-    echo ✅ Agent built: agent/gpu-connect-agent.exe
+    copy /Y gpu-connect-agent.exe ..\..\frontend\public\downloads\gpu-connect.exe >nul 2>&1
+    echo ✅ Agent built: agent/windows/gpu-connect-agent.exe
     echo ✅ Copied to frontend/public/downloads/gpu-connect.exe
 ) else (
     echo ❌ Build failed!
-    cd ..
+    cd ..\..
     exit /b 1
 )
 if exist build rmdir /s /q build
 if exist gpu-connect-agent.spec del gpu-connect-agent.spec
-cd ..
+cd ..\..
+
+echo Building Linux package...
+cd agent\linux
+call build_linux.bat
+if exist dist\gpu-connect-agent-linux.zip (
+    copy /Y dist\gpu-connect-agent-linux.zip ..\..\frontend\public\downloads\ >nul 2>&1
+    echo ✅ Linux package copied to frontend/public/downloads/
+)
+cd ..\..
+
+echo Building macOS package...
+cd agent\macos
+call build_macos.bat
+if exist dist\gpu-connect-agent-macos.zip (
+    copy /Y dist\gpu-connect-agent-macos.zip ..\..\frontend\public\downloads\ >nul 2>&1
+    echo ✅ macOS package copied to frontend/public/downloads/
+)
+cd ..\..
 goto end
 
 :clean
-cd agent
+cd agent\windows
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
 if exist gpu-connect-agent.spec del gpu-connect-agent.spec
-if exist __pycache__ rmdir /s /q __pycache__
 cd ..
+if exist __pycache__ rmdir /s /q __pycache__
+cd linux
+if exist dist rmdir /s /q dist
+cd ..\macos
+if exist dist rmdir /s /q dist
+cd ..\..
 echo 🧹 Cleaned build artifacts
 goto end
 

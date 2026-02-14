@@ -82,7 +82,7 @@ GPU-For-Everyone/
 
 ### Priority 3: Optimization
 - [ ] **Binary Compression**: Reduce agent size (currently ~10MB).
-- [ ] **Cross-Platform Builds**: CI/CD for Mac/Linux agent binaries.
+- [x] **Cross-Platform Builds**: Windows, Linux, and macOS agent packages available.
 
 ---
 
