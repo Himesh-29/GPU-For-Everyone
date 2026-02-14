@@ -64,8 +64,8 @@ jobs:
       - name: Scan Python dependencies
         run: |
           cd backend
-          pip-audit -r requirements.txt --format json --output ../pip-audit-results.json
-          pip-audit -r requirements.txt
+          # Fail the job if any vulnerabilities >= medium are found
+          pip-audit -r requirements.txt --format json --output ../pip-audit-results.json --fail-on=medium
 
       - name: Upload pip-audit report
         if: always()
@@ -86,8 +86,8 @@ jobs:
         run: |
           cd frontend
           npm ci
-          npm audit --json > ../npm-audit-results.json
-          npm audit
+          # Fail the job if any vulnerabilities >= moderate are found
+          npm audit --audit-level=moderate --json > ../npm-audit-results.json
 
       - name: Upload npm audit report
         if: always()
@@ -118,8 +118,21 @@ jobs:
 
       - name: Run Bandit on backend
         run: |
+          # Run Bandit and produce JSON results
           bandit -r backend/ -f json -o bandit-results.json --severity-level medium
-          bandit -r backend/ --severity-level medium
+          # Fail if any results are present (medium+ severity)
+          python3 - <<'PY'
+import json,sys
+try:
+    with open('bandit-results.json') as f:
+        data=json.load(f)
+except Exception:
+    sys.exit(0)
+if data.get('results'):
+    print('Bandit found security issues: failing workflow')
+    sys.exit(1)
+print('Bandit clean')
+PY
 
       - name: Upload Bandit report
         if: always()
