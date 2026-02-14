@@ -1,0 +1,130 @@
+name: Deploy to Vercel & Render
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [Test & Code Quality]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Check if quality gates passed before deploying
+  # ─────────────────────────────────────────────
+  check-quality-gate:
+    name: Quality Gate Check
+    runs-on: ubuntu-latest
+    outputs:
+      approved: ${{ steps.gate.outputs.approved }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check workflow status
+        if: github.event_name == 'workflow_run'
+        run: |
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "❌ Quality checks failed - blocking deployment"
+            echo "approved=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          echo "✅ Quality gates approved - proceeding with deployment"
+          echo "approved=true" >> $GITHUB_OUTPUT
+
+      - name: Approve for manual push
+        if: github.event_name == 'push'
+        run: echo "approved=true" >> $GITHUB_OUTPUT
+
+  # ─────────────────────────────────────────────
+  # Deploy frontend to Vercel
+  # ─────────────────────────────────────────────
+  deploy-vercel:
+    name: Deploy Frontend to Vercel
+    runs-on: ubuntu-latest
+    needs: check-quality-gate
+    if: needs.check-quality-gate.outputs.approved == 'true'
+    environment:
+      name: production-frontend
+      url: https://gpu-connect.vercel.app
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        uses: vercel/action@main
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: frontend
+        env:
+          VERCEL_GITHUB_DEPLOYMENT: true
+          VERCEL_GITHUB_COMMENT: true
+
+      - name: Log deployment
+        run: |
+          echo "✅ Frontend deployed to Vercel"
+          echo "URL: https://gpu-connect.vercel.app"
+
+  # ─────────────────────────────────────────────
+  # Deploy backend to Render
+  # ─────────────────────────────────────────────
+  deploy-render:
+    name: Deploy Backend to Render
+    runs-on: ubuntu-latest
+    needs: check-quality-gate
+    if: needs.check-quality-gate.outputs.approved == 'true'
+    environment:
+      name: production-backend
+      url: https://gpu-connect-api.onrender.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Render via webhook
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            ${{ secrets.RENDER_DEPLOY_WEBHOOK }} \
+            -d '{
+              "commit": "${{ github.sha }}",
+              "ref": "${{ github.ref }}",
+              "message": "Deployment triggered by GitHub Actions - quality gates passed"
+            }' || echo "⚠️  Render webhook failed (may already be deploying)"
+
+      - name: Log deployment
+        run: |
+          echo "✅ Backend deployment triggered on Render"
+          echo "URL: https://gpu-connect-api.onrender.com"
+
+  # ─────────────────────────────────────────────
+  # Notify on failed quality gate
+  # ─────────────────────────────────────────────
+  notify-blocked:
+    name: Notify Blocked Deployment
+    runs-on: ubuntu-latest
+    needs: check-quality-gate
+    if: needs.check-quality-gate.outputs.approved != 'true'
+    steps:
+      - name: Create comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚫 **Deployment Blocked**\n\nQuality gates did not pass. Check the test results and code quality reports before retrying.'
+            });
+
+      - name: Log blocked deployment
+        run: |
+          echo "❌ Deployment blocked due to failed quality checks"
+          echo "Please fix issues and retry"

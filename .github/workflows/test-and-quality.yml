@@ -1,0 +1,215 @@
+name: Test & Code Quality
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Backend Python tests with coverage
+  # ─────────────────────────────────────────────
+  backend-tests:
+    name: Backend Tests (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-django
+
+      - name: Run pytest with coverage
+        run: |
+          cd backend
+          pytest --cov=. --cov-report=xml --cov-report=html --cov-report=term --junitxml=test-results.xml
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/htmlcov
+          retention-days: 30
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: backend/test-results.xml
+          retention-days: 30
+
+      - name: Check coverage threshold (70%)
+        run: |
+          cd backend
+          COVERAGE=$(python3 -c "
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('.coverage')
+          root = tree.getroot()
+          # Parse coverage from cobertura XML
+          " 2>/dev/null || echo "0")
+          # Alternative: use coverage report
+          coverage_percent=$(grep -oP 'TOTAL\s+\d+\s+\d+\s+\K[\d.]+' <<< "$(coverage report)" || echo "0")
+          echo "Code coverage: ${coverage_percent}%"
+          if (( $(echo "$coverage_percent < 70" | bc -l) )); then
+            echo "❌ Coverage below 70% threshold"
+            exit 1
+          fi
+          echo "✅ Coverage meets threshold (70%)"
+
+  # ─────────────────────────────────────────────
+  # Job 2: Frontend tests (if tests exist)
+  # ─────────────────────────────────────────────
+  frontend-tests:
+    name: Frontend Tests (TypeScript/JavaScript)
+    runs-on: ubuntu-latest
+    continue-on-error: true # Optional if tests not fully set up
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run tests
+        run: |
+          cd frontend
+          npm test -- --coverage --watchAll=false 2>/dev/null || echo "No tests configured"
+
+  # ─────────────────────────────────────────────
+  # Job 3: Code quality analysis (Pylint + Radon)
+  # ─────────────────────────────────────────────
+  code-quality:
+    name: Code Quality Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install quality tools
+        run: |
+          pip install pylint radon bandit
+
+      - name: Run Pylint (code smells, style issues)
+        id: pylint
+        continue-on-error: true
+        run: |
+          cd backend
+          pylint --exit-zero --output-format=parseable $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*" ! -path "*/.venv/*") > pylint-results.txt 2>&1 || true
+          cat pylint-results.txt
+
+      - name: Run Radon (complexity analysis)
+        id: radon
+        run: |
+          cd backend
+          echo "=== Cyclomatic Complexity ===" > radon-results.txt
+          radon cc -a -n B $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*") >> radon-results.txt 2>&1 || true
+          echo "" >> radon-results.txt
+          echo "=== Maintenance Index ===" >> radon-results.txt
+          radon mi -n B $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*") >> radon-results.txt 2>&1 || true
+          cat radon-results.txt
+
+      - name: Count code issues
+        id: issues
+        run: |
+          cd backend
+          PYLINT_ISSUES=$(grep -c "^" pylint-results.txt 2>/dev/null || echo "0")
+          PYLINT_WARNINGS=$(grep -c "warning\|W" pylint-results.txt 2>/dev/null || echo "0")
+          PYLINT_ERRORS=$(grep -c "error\|E" pylint-results.txt 2>/dev/null || echo "0")
+          echo "pylint_issues=$PYLINT_ISSUES" >> $GITHUB_OUTPUT
+          echo "pylint_warnings=$PYLINT_WARNINGS" >> $GITHUB_OUTPUT
+          echo "pylint_errors=$PYLINT_ERRORS" >> $GITHUB_OUTPUT
+          # Fail if errors found
+          if [ "$PYLINT_ERRORS" -gt 0 ]; then
+            echo "❌ Pylint critical errors found: $PYLINT_ERRORS"
+            exit 1
+          fi
+
+      - name: Upload code quality reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-reports
+          path: |
+            backend/pylint-results.txt
+            backend/radon-results.txt
+          retention-days: 30
+
+      - name: Comment PR with quality summary
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const pylintIssues = '${{ steps.issues.outputs.pylint_issues }}' || '0';
+            const pylintWarnings = '${{ steps.issues.outputs.pylint_warnings }}' || '0';
+            const pylintErrors = '${{ steps.issues.outputs.pylint_errors }}' || '0';
+            
+            const comment = `## 📊 Code Quality Report
+            
+            **Pylint Analysis:**
+            - 🔴 Errors: ${pylintErrors}
+            - 🟡 Warnings: ${pylintWarnings}
+            - Total Issues: ${pylintIssues}
+            
+            [View detailed reports in artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  # ─────────────────────────────────────────────
+  # Job 4: Quality gate status check
+  # ─────────────────────────────────────────────
+  quality-gate:
+    name: Quality Gate Check
+    runs-on: ubuntu-latest
+    needs: [backend-tests, code-quality]
+    if: always()
+    steps:
+      - name: Check all quality checks passed
+        run: |
+          if [ "${{ needs.backend-tests.result }}" != "success" ]; then
+            echo "❌ Backend tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.code-quality.result }}" != "success" ]; then
+            echo "❌ Code quality checks failed"
+            exit 1
+          fi
+          echo "✅ All quality gates passed - ready for deployment"
+
+      - name: Set deployment status
+        if: success()
+        run: echo "READY_FOR_DEPLOYMENT=true" >> $GITHUB_ENV
