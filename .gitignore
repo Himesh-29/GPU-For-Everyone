@@ -9,6 +9,11 @@ develop-eggs/
 dist/
 downloads/
 eggs/
+
+# But allow frontend downloads
+!frontend/public/downloads/
+!frontend/public/downloads/*.exe
+!frontend/public/downloads/*.zip
 .eggs/
 lib/
 lib64/
