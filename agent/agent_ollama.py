@@ -9,6 +9,28 @@ import aiohttp
 import platform
 from pathlib import Path
 
+# Load .env.local if present (next to this script, next to the exe, or in parent dir)
+def _load_env_local():
+    """Load key=value pairs from .env.local into os.environ (won't overwrite existing vars)."""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller bundled exe — check next to exe and parent of exe
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates = [exe_dir / ".env.local", exe_dir.parent / ".env.local"]
+    else:
+        # Running as plain .py
+        candidates = [Path(__file__).resolve().parent / ".env.local"]
+
+    for env_path in candidates:
+        if env_path.is_file():
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    os.environ.setdefault(key.strip(), value.strip())
+            break
+
+_load_env_local()
+
 # Configuration
 SERVER_URL = os.environ.get("SERVER_URL", "wss://gpu-connect-api.onrender.com/ws/computing/")
 API_URL = os.environ.get("API_URL", "https://gpu-connect-api.onrender.com")

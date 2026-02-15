@@ -240,10 +240,14 @@ const AgentTokenManager = ({ token }: { token: string | null }) => {
   useEffect(() => { fetchTokens(); }, []);
 
   const generateToken = async () => {
+    if (!label.trim()) {
+      alert('❌ Token label is required. Please enter a label (e.g., "Home PC")');
+      return;
+    }
     setGenerating(true);
     try {
       const resp = await axios.post(`${API_URL}/api/core/agent-token/generate/`, {
-        label: label || 'Default Agent'
+        label: label.trim()
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -287,9 +291,10 @@ const AgentTokenManager = ({ token }: { token: string | null }) => {
       }}>
         <input
           type="text"
-          placeholder="Token label (e.g. 'Home PC')"
+          placeholder="Token label (e.g. 'Home PC') *required"
           value={label}
           onChange={e => setLabel(e.target.value)}
+          required
           style={{
             flex: 1, padding: '8px 12px', borderRadius: '6px', fontSize: '13px',
             background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)',
@@ -299,8 +304,8 @@ const AgentTokenManager = ({ token }: { token: string | null }) => {
         <button
           className="btn-primary-sm"
           onClick={generateToken}
-          disabled={generating}
-          style={{ whiteSpace: 'nowrap' }}
+          disabled={generating || !label.trim()}
+          style={{ whiteSpace: 'nowrap', opacity: !label.trim() ? 0.5 : 1, cursor: !label.trim() ? 'not-allowed' : 'pointer' }}
         >
           {generating ? 'Generating...' : '+ Generate Token'}
         </button>
