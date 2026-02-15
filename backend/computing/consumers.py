@@ -131,6 +131,10 @@ class GPUConsumer(AsyncWebsocketConsumer):
                         await self.close()
                         return
 
+                # Update node's last_heartbeat to keep it active
+                if self.node_id != "unknown":
+                    await self._touch_node_heartbeat(self.node_id)
+
                 await self.send(json.dumps(
                     {"type": "ping"}, ensure_ascii=False,
                 ))
@@ -390,6 +394,16 @@ class GPUConsumer(AsyncWebsocketConsumer):
         from .models import Node  # pylint: disable=import-outside-toplevel
         Node.objects.filter(node_id=node_id).update(is_active=False)
         logger.info("Node %s marked inactive", node_id)
+
+    @database_sync_to_async
+    def _touch_node_heartbeat(self, node_id):
+        """Update node's last_heartbeat to keep it active."""
+        from .models import Node  # pylint: disable=import-outside-toplevel
+        try:
+            node = Node.objects.get(node_id=node_id)
+            node.save()  # Triggers auto_now on last_heartbeat
+        except Node.DoesNotExist:
+            logger.warning("Node %s not found for heartbeat touch", node_id)
 
     @database_sync_to_async
     def _complete_job(self, task_id, result_data, provider_user_id):
