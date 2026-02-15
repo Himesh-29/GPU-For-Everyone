@@ -8,10 +8,25 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.utils import timezone
 
+from datetime import timedelta
+
 logger = logging.getLogger(__name__)
 
 JOB_COST = Decimal("1.00")
 PROVIDER_SHARE = Decimal("1.00")
+
+# Nodes with no heartbeat for this long are auto-marked inactive
+NODE_STALE_THRESHOLD = timedelta(minutes=2)
+
+
+def _cleanup_stale_nodes():
+    """Mark nodes inactive if their last heartbeat is older than threshold."""
+    from .models import Node  # pylint: disable=import-outside-toplevel
+    cutoff = timezone.now() - NODE_STALE_THRESHOLD
+    stale = Node.objects.filter(is_active=True, last_heartbeat__lt=cutoff)
+    count = stale.update(is_active=False)
+    if count:
+        logger.info("Marked %d stale node(s) inactive (no heartbeat since %s)", count, cutoff)
 
 
 class GPUConsumer(AsyncWebsocketConsumer):
@@ -62,6 +77,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
     def _get_stats(self):
         """Return network stats: active nodes, completed jobs, model count."""
         from .models import Node, Job  # pylint: disable=import-outside-toplevel
+        _cleanup_stale_nodes()
         active_nodes = Node.objects.filter(is_active=True).count()
         completed_jobs = Job.objects.filter(status="COMPLETED").count()
         models = self._get_models_sync_shared()
@@ -74,6 +90,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _get_models(self):
         """Return available models aggregated from active nodes."""
+        _cleanup_stale_nodes()
         return self._get_models_sync_shared()
 
     def _get_models_sync_shared(self):
@@ -606,6 +623,7 @@ class DashboardConsumer(AsyncWebsocketConsumer):
     def _get_stats(self):
         """Return network stats for the dashboard."""
         from .models import Node, Job  # pylint: disable=import-outside-toplevel
+        _cleanup_stale_nodes()
         active_nodes = Node.objects.filter(is_active=True).count()
         completed_jobs = Job.objects.filter(status="COMPLETED").count()
         available = self._get_models_sync()
@@ -618,6 +636,7 @@ class DashboardConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _get_models(self):
         """Return available models aggregated from active nodes."""
+        _cleanup_stale_nodes()
         return self._get_models_sync()
 
     def _get_models_sync(self):
