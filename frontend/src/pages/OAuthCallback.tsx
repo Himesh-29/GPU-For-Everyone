@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -16,8 +16,13 @@ export const OAuthCallback: React.FC = () => {
   const [status, setStatus] = useState('Completing sign in...');
   const navigate = useNavigate();
   const { login } = useAuth();
+  const processed = useRef(false);
 
   useEffect(() => {
+    // Guard against React Strict Mode double-invocation
+    if (processed.current) return;
+    processed.current = true;
+
     const processOAuthTokens = () => {
       try {
         // Read tokens from URL hash fragment
