@@ -94,7 +94,7 @@ jobs:
       - name: Run tests
         run: |
           cd frontend
-          npm test -- --coverage --watchAll=false 2>/dev/null || echo "No tests configured"
+          npx vitest --run --reporter=verbose
 
   # ─────────────────────────────────────────────
   # Job 3: Code quality analysis (Pylint + Radon)
