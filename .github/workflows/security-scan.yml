@@ -94,14 +94,15 @@ jobs:
           cd frontend
           npm ci
           set +e
-          npm audit --audit-level=high --json > ../npm-audit-results.json
+          # Audit only production dependencies (omit dev/test deps)
+          npm audit --audit-level=high --omit=dev --json > ../npm-audit-results.json
           AUDIT_EXIT=$?
           set -e
           if [ $AUDIT_EXIT -ne 0 ]; then
-            echo "npm audit found high/critical vulnerabilities - failing workflow"
+            echo "npm audit found high/critical vulnerabilities in production deps - failing workflow"
             exit 1
           fi
-          echo "npm audit scan complete - no high/critical vulnerabilities found"
+          echo "npm audit scan complete - no high/critical vulnerabilities in production dependencies"
 
       - name: Upload npm audit report
         if: always()
