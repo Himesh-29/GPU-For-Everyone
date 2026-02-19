@@ -1,4 +1,5 @@
 # GPU Connect - Decentralized AI Compute Marketplace
+![Visitors](https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2FHimesh-29%2FGPUConnect&label=Visitors&countColor=%23263759)
 
 **GPU Connect** is a next-generation decentralized platform that connects AI researchers with idle GPU power. By leveraging a peer-to-peer architecture, it enables instant access to high-performance LLMs and compute resources at a fraction of cloud costs.
 
